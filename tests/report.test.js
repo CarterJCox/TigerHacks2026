@@ -104,3 +104,26 @@ describe('helpers', () => {
     expect(listReps([2, 5, 6, 7])).toBe('reps 2 and 5–7');
   });
 });
+
+describe('plain-text export', () => {
+  it('includes exercise, weight, reps, breakdown rep and findings with numbers', async () => {
+    const { buildPlainTextReport } = await import('../src/lib/report/export.js');
+    const a = breakdownSet();
+    const input = { weight: 25, unit: 'lb', plannedReps: 10 };
+    const text = buildPlainTextReport(a, input, buildTemplateReport(a, input));
+    expect(text).toContain('Spotter report: Dumbbell bicep curl');
+    expect(text).toContain('Weight: 25 lb');
+    expect(text).toContain('Reps: 8 counted of 10 planned');
+    expect(text).toContain('Breakdown rep: rep 6');
+    expect(text).toMatch(/Key findings\n- Rep 6: .*\d+° → \d+°/);
+    expect(text).toContain('Rep 8: Broke down');
+  });
+
+  it('falls back to key numbers when nothing changed', async () => {
+    const { buildPlainTextReport } = await import('../src/lib/report/export.js');
+    const a = analyzeTrack(sideTrack(curlSet(Array(6).fill(clean))), 'curl');
+    const text = buildPlainTextReport(a, { bodyweight: false, weight: 20, unit: 'kg', plannedReps: 6 }, buildTemplateReport(a, {}));
+    expect(text).toContain('Breakdown rep: none, form held');
+    expect(text).toMatch(/Key numbers\n- Elbow range of motion: \d+° baseline/);
+  });
+});

@@ -13,7 +13,8 @@ export class VideoLoadError extends Error {
   }
 }
 
-const MAX_DURATION_SEC = 180;
+// Longer videos can be loaded and then trimmed to the set before analysis.
+const MAX_DURATION_SEC = 600;
 
 function createVideo(url) {
   const video = document.createElement('video');
@@ -150,7 +151,7 @@ export async function prepareVideo(file, { onStatus = () => {}, onConvertProgres
   if (duration > MAX_DURATION_SEC) {
     URL.revokeObjectURL(url);
     throw new VideoLoadError(
-      `This video is ${Math.round(duration)} seconds long. Trim it to just the set (under ${MAX_DURATION_SEC / 60} minutes) and upload it again.`,
+      `This video is ${Math.round(duration / 60)} minutes long. Cut it down to under ${MAX_DURATION_SEC / 60} minutes around the set (most phones can trim in the Photos app) and upload it again.`,
     );
   }
 

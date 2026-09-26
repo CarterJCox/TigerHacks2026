@@ -5,6 +5,7 @@ import RepChart from './RepChart.jsx';
 import RepTable from './RepTable.jsx';
 import CompareView, { comparisonPair } from './CompareView.jsx';
 import EmptyState from './EmptyState.jsx';
+import ExportBar from './ExportBar.jsx';
 import { STATUS } from './status.js';
 import { HighlightContext, useMetricHover } from './highlight.js';
 import { highlightFor } from './overlay.js';
@@ -173,6 +174,7 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
             {report.source === 'llm' ? 'Written by Claude from the measurements below.' : 'Written from the measurements below.'}
             {llmPending && <span className="pending"> Checking for a written summary…</span>}
           </p>
+          <ExportBar analysis={analysis} input={input} report={report} />
         </div>
         <dl className="stat-row">
           <div className="stat">

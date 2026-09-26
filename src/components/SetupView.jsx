@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { EXERCISES, EXERCISE_ORDER } from '../config/exercises/index.js';
 import CameraGuide from './CameraGuide.jsx';
 import { prepareVideo, VideoLoadError } from '../lib/video/load.js';
-import { drawVideoFrame, rotatedSize, seekVideo } from '../lib/video/frame.js';
+import TrimControl, { MAX_ANALYSIS_SEC } from './TrimControl.jsx';
 import { mentionsPain } from '../lib/report/safety.js';
 import { SAMPLE } from '../config/sample.js';
 import { weightFor } from '../lib/prefs.js';
@@ -21,39 +21,11 @@ function validate(input) {
   return errors;
 }
 
-function Preview({ prepared, rotation }) {
-  const canvasRef = useRef(null);
-  useEffect(() => {
-    let cancelled = false;
-    const { video } = prepared;
-    const size = rotatedSize(video.videoWidth, video.videoHeight, rotation);
-    const scale = Math.min(1, 720 / Math.max(size.width, size.height));
-    const w = Math.round(size.width * scale);
-    const h = Math.round(size.height * scale);
-    const draw = async () => {
-      try {
-        await seekVideo(video, Math.min(prepared.duration / 2, 1.5));
-      } catch {
-        return;
-      }
-      if (cancelled || !canvasRef.current) return;
-      const c = canvasRef.current;
-      c.width = w;
-      c.height = h;
-      drawVideoFrame(c.getContext('2d'), video, rotation, w, h);
-    };
-    draw();
-    return () => {
-      cancelled = true;
-    };
-  }, [prepared, rotation]);
-  return <canvas ref={canvasRef} className="preview-canvas" aria-label="First frame of your video" />;
-}
-
 export default function SetupView({ input, onInputChange, onAnalyze, initialPrepared, onDiscardPrepared, error, onDismissError }) {
   const [touched, setTouched] = useState(false);
   const [prepared, setPrepared] = useState(initialPrepared);
   const [userRotation, setUserRotation] = useState(0);
+  const [trim, setTrim] = useState(initialPrepared?.trim ?? null);
   const [loadState, setLoadState] = useState({ status: initialPrepared ? 'ready' : 'idle' });
   const [dragOver, setDragOver] = useState(false);
   const [sampleState, setSampleState] = useState(null); // null | 'loading' | error message
@@ -63,6 +35,7 @@ export default function SetupView({ input, onInputChange, onAnalyze, initialPrep
   const painFromNotes = mentionsPain(input.notes);
 
   const set = (patch) => onInputChange({ ...input, ...patch });
+  const trimTooLong = Boolean(prepared) && (trim ? trim.end - trim.start : prepared.duration) > MAX_ANALYSIS_SEC;
 
   async function handleFile(file) {
     if (!file) return;
@@ -73,6 +46,7 @@ export default function SetupView({ input, onInputChange, onAnalyze, initialPrep
     }
     setPrepared(null);
     setUserRotation(0);
+    setTrim(null);
     setLoadState({ status: 'loading', message: 'Reading video', file: file.name });
     try {
       const p = await prepareVideo(file, {
@@ -81,6 +55,8 @@ export default function SetupView({ input, onInputChange, onAnalyze, initialPrep
       });
       p.fileName = file.name;
       setPrepared(p);
+      // Long recordings start trimmed to the first 3 minutes; the rest is optional.
+      setTrim(p.duration > MAX_ANALYSIS_SEC ? { start: 0, end: MAX_ANALYSIS_SEC } : null);
       setLoadState({ status: 'ready' });
     } catch (err) {
       console.error(err);
@@ -115,17 +91,17 @@ export default function SetupView({ input, onInputChange, onAnalyze, initialPrep
   function submit(e) {
     e.preventDefault();
     setTouched(true);
-    if (Object.keys(errors).length || !prepared) return;
+    if (Object.keys(errors).length || !prepared || trimTooLong) return;
     const final = {
       ...input,
       painReported: input.painReported || painFromNotes,
       weight: exercise.allowBodyweight && input.bodyweight ? 0 : Number(input.weight),
       plannedReps: Number(input.plannedReps),
     };
-    onAnalyze(final, { ...prepared, rotation: (prepared.rotation + userRotation) % 360 });
+    onAnalyze(final, { ...prepared, rotation: (prepared.rotation + userRotation) % 360, trim });
   }
 
-  const canAnalyze = prepared && !Object.keys(errors).length;
+  const canAnalyze = prepared && !Object.keys(errors).length && !trimTooLong;
 
   return (
     <form className="setup" onSubmit={submit} noValidate>
@@ -354,24 +330,25 @@ export default function SetupView({ input, onInputChange, onAnalyze, initialPrep
 
             {prepared && (
               <div className="preview">
-                <Preview prepared={prepared} rotation={(prepared.rotation + userRotation) % 360} />
-                <div className="preview-meta">
-                  <div>
-                    <p className="preview-name">{prepared.fileName || 'Video'}</p>
-                    <p className="muted small">
-                      {prepared.duration.toFixed(1)} s{prepared.transcoded ? ' · converted on this device' : ''}
-                    </p>
+                <TrimControl prepared={prepared} rotation={(prepared.rotation + userRotation) % 360} trim={trim} onChange={setTrim}>
+                  <div className="preview-meta">
+                    <div>
+                      <p className="preview-name">{prepared.fileName || 'Video'}</p>
+                      <p className="muted small">
+                        {prepared.duration.toFixed(1)} s{prepared.transcoded ? ' · converted on this device' : ''}
+                      </p>
+                    </div>
+                    <div className="preview-actions">
+                      <button type="button" className="btn btn-ghost" onClick={() => setUserRotation((r) => (r + 90) % 360)}>
+                        Rotate
+                      </button>
+                      <button type="button" className="btn btn-ghost" onClick={() => fileInputRef.current?.click()}>
+                        Replace
+                      </button>
+                    </div>
                   </div>
-                  <div className="preview-actions">
-                    <button type="button" className="btn btn-ghost" onClick={() => setUserRotation((r) => (r + 90) % 360)}>
-                      Rotate
-                    </button>
-                    <button type="button" className="btn btn-ghost" onClick={() => fileInputRef.current?.click()}>
-                      Replace
-                    </button>
-                  </div>
-                </div>
-                <p className="muted small">If the preview is sideways, use Rotate until you are upright.</p>
+                  <p className="muted small">If the preview is sideways, use Rotate until you are upright.</p>
+                </TrimControl>
               </div>
             )}
           </section>
