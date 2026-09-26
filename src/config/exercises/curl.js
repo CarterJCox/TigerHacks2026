@@ -49,10 +49,10 @@ export default {
   },
 
   // Camera angle check. Shoulder span is the horizontal distance between the
-  // two shoulders divided by torso length. Side-on it is small; facing the
-  // camera it is large (around 0.7-0.9).
+  // two shoulders divided by torso length. Measured on test clips: side-on
+  // about 0.1-0.35, three-quarter about 0.35-0.55, facing the camera 0.55+.
   viewCheck: {
-    maxShoulderRatio: 0.55,
+    maxShoulderRatio: 0.5,
   },
 
   // Camera stability. A still camera is required: joint angles and distances

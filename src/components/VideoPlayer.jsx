@@ -289,6 +289,14 @@ const VideoPlayer = forwardRef(function VideoPlayer({ src, rotation, analysis, s
           onSeeked={() => {
             dirtyRef.current = true;
           }}
+          onTimeUpdate={(e) => {
+            // Backup for single-rep playback when animation frames are throttled.
+            const v = e.currentTarget;
+            if (stopAtRef.current != null && v.currentTime >= stopAtRef.current) {
+              v.pause();
+              stopAtRef.current = null;
+            }
+          }}
         />
         {!ready && <div className="player-loading">Loading video</div>}
         {current && (

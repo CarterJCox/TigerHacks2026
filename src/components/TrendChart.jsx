@@ -5,7 +5,11 @@
 import { useState } from 'react';
 import { useWidth } from './useWidth.js';
 
-const PAD = { left: 48, right: 16 };
+const PAD = { left: 48, right: 30 };
+
+function dayLabel(iso) {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
 
 function scale(lo, hi, top, h) {
   return (v) => top + h - ((v - lo) / (hi - lo || 1)) * h;
@@ -90,14 +94,21 @@ export default function TrendChart({ sessions, unit }) {
         )}
         <Panel title="Form score" sub="0–100, set average" points={sessions} values={scores} domain={[0, 100]} x={x} width={width} height={120} hover={hover} fmtTick={(t) => t} />
         <svg width={width} height={24} aria-hidden="true">
-          {sessions.map((s, i) =>
-            n <= 8 || i === 0 || i === n - 1 || i % Math.ceil(n / 6) === 0 ? (
-              <text key={s.id} x={x(i)} y={14} className="tick" textAnchor="middle">
-                {new Date(s.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+          {sessions.map((s, i) => {
+            // Label each day once, thinning labels when there are many sessions.
+            const day = dayLabel(s.date);
+            const newDay = i === 0 || dayLabel(sessions[i - 1].date) !== day;
+            const room = n <= 8 || i % Math.ceil(n / 6) === 0 || i === n - 1;
+            if (!newDay || !room) return null;
+            const anchor = n > 1 && i === n - 1 ? 'end' : n > 1 && i === 0 ? 'start' : 'middle';
+            return (
+              <text key={s.id} x={x(i)} y={14} className="tick" textAnchor={anchor}>
+                {day}
               </text>
-            ) : null,
-          )}
+            );
+          })}
         </svg>
+        {n === 1 && <p className="muted small">One set so far. The trend fills in as you analyze more sets.</p>}
         {hs && (
           <div className="chart-tip" style={{ left: Math.min(Math.max(x(hover), 80), width - 80), top: 0 }}>
             <strong>{hs.bodyweight ? 'Bodyweight' : `${Math.round(hs.weightDisplay * 10) / 10} ${unit}`}</strong>

@@ -8,7 +8,7 @@ import { runAnalysis } from './lib/pipeline.js';
 import { AnalysisCancelled } from './lib/pose/extract.js';
 import { buildTemplateReport } from './lib/report/template.js';
 import { buildPayload } from './lib/report/payload.js';
-import { fetchLlmReport } from './lib/report/client.js';
+import { fetchLlmReport, fetchReportStatus } from './lib/report/client.js';
 import { saveSession, sessionFromAnalysis } from './lib/history.js';
 
 const DEFAULT_INPUT = {
@@ -80,8 +80,10 @@ export default function App() {
         }
         const report = buildTemplateReport(analysis, finalInput);
         saveSession(finalInput.exerciseId, sessionFromAnalysis(analysis, finalInput, report.headline));
-        setResult({ analysis, input: finalInput, report, llmPending: true });
+        const { llm: llmAvailable } = await fetchReportStatus();
+        setResult({ analysis, input: finalInput, report, llmPending: llmAvailable });
         setScreen('results');
+        if (!llmAvailable) return;
         const llm = await fetchLlmReport(buildPayload(analysis, finalInput, report), { signal: controller.signal });
         if (controller.signal.aborted) return;
         setResult((prev) =>

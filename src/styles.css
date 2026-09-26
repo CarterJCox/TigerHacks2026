@@ -1052,7 +1052,7 @@ legend.panel-title + * {
 }
 
 .headline {
-  font-size: clamp(26px, 3.4vw, 40px);
+  font-size: clamp(24px, 3vw, 36px);
   font-weight: 650;
   letter-spacing: -0.03em;
   line-height: 1.15;
@@ -2212,4 +2212,21 @@ td.lvl-major .cell-delta {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Grid containers never grow to fit wide children (charts measure their own width). */
+.results,
+.results-head,
+.history,
+.section,
+.chart-card,
+.player,
+.setup-col {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.trend,
+.chart-body {
+  min-width: 0;
+  max-width: 100%;
 }

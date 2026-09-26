@@ -35,7 +35,7 @@ export default {
     minTorsoFraction: 0.08,
   },
 
-  viewCheck: { maxShoulderRatio: 0.55 },
+  viewCheck: { maxShoulderRatio: 0.5 },
 
   // Rep detection runs on knee flexion (180° minus the knee angle): the
   // signal rises on the way down.

@@ -35,7 +35,7 @@ export default {
     minTorsoFraction: 0.1,
   },
 
-  viewCheck: { maxShoulderRatio: 0.55 },
+  viewCheck: { maxShoulderRatio: 0.5 },
 
   // Rep detection runs on elbow flexion (180° minus the elbow angle): the
   // signal rises as the handle is pulled in.

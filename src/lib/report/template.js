@@ -29,10 +29,12 @@ export function buildHeadline(analysis) {
       .filter((x) => x.c)
       .sort((a, b) => b.c.severity * b.c.def.weight - a.c.severity * a.c.def.weight)[0];
     const detail = worst ? `${changePhrase(worst.c.key, worst.c, cfg.metrics[worst.c.key])}` : null;
+    const lastScored = scored.length ? scored[scored.length - 1].index : null;
     if (isolated.length === 1) {
-      return `Form held across the set apart from rep ${isolated[0]}${detail ? `, where ${detail}` : ''}; the rep after it returned to your baseline.`;
+      const after = isolated[0] === lastScored ? 'it was the last rep of the set' : 'the rep after it returned to your baseline';
+      return `Form held across the set apart from rep ${isolated[0]}${detail ? `, where ${detail}` : ''}; ${after}.`;
     }
-    return `Form held across the set apart from brief changes on ${listReps(isolated)}, none of which carried into the next rep${detail ? `. The largest was on rep ${worst.r.index}: ${detail}` : ''}.`;
+    return `Form held across the set apart from brief, one-rep changes on ${listReps(isolated)}${detail ? `. The largest was on rep ${worst.r.index}: ${detail}` : ''}.`;
   }
   const nb = analysis.baselineReps.length;
   return `Form held steady across all ${scored.length} scored reps; every rep stayed within the range of your ${nb === 1 ? 'baseline rep' : `${nb} baseline reps`}.`;

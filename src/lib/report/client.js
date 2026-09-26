@@ -1,13 +1,15 @@
 import { validateLlmReport } from './safety.js';
 
-export async function fetchReportStatus() {
-  try {
-    const res = await fetch('/api/health');
-    if (!res.ok) return { llm: false };
-    return await res.json();
-  } catch {
-    return { llm: false };
+let statusPromise = null;
+
+/** Whether the server has an LLM configured. Cached for the session. */
+export function fetchReportStatus() {
+  if (!statusPromise) {
+    statusPromise = fetch('/api/health')
+      .then((res) => (res.ok ? res.json() : { llm: false }))
+      .catch(() => ({ llm: false }));
   }
+  return statusPromise;
 }
 
 /**
