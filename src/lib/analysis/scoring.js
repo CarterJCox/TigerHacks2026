@@ -41,8 +41,15 @@ export function deviation(value, stat, def) {
   const delta = value - stat.mean;
   const pct = Math.abs(stat.mean) > 1e-6 ? delta / Math.abs(stat.mean) : NaN;
   const bad = def.direction === 'increase' ? delta : def.direction === 'decrease' ? -delta : Math.abs(delta);
-  // Ignore the part of the change that is within the baseline reps' own spread.
-  let adj = Math.max(0, bad - stat.sd);
+  // Only the part of the change that goes beyond the baseline reps' own range
+  // counts: a value one of your baseline reps already had is not a change.
+  const beyond =
+    def.direction === 'increase'
+      ? value - stat.max
+      : def.direction === 'decrease'
+        ? stat.min - value
+        : Math.max(value - stat.max, stat.min - value);
+  let adj = Math.max(0, beyond);
   if (Math.abs(delta) < def.minAbsChange) adj = 0;
   const norm = def.mode === 'relative' ? adj / Math.max(Math.abs(stat.mean), def.minAbsChange) : adj;
   const level = norm >= def.major ? 'major' : norm >= def.notable ? 'notable' : 'ok';
@@ -78,15 +85,23 @@ export function changedMetrics(rep, cfg) {
 export function findBreakdown(reps, baselineReps, cfg) {
   const lastBaseline = baselineReps.length ? baselineReps[baselineReps.length - 1].index : 0;
   const after = reps.filter((r) => r.scorable && r.index > lastBaseline);
+  const off = (r) => r.status === 'yellow' || r.status === 'red';
+  const need = cfg.scoring.sustainReps - 1;
   for (let k = 0; k < after.length; k++) {
     const rep = after[k];
-    if (rep.status === 'red') {
-      return { rep: rep.index, kind: 'breakdown', causes: changedMetrics(rep, cfg).slice(0, 3) };
-    }
-    if (rep.status === 'yellow') {
-      const next = after.slice(k + 1, k + cfg.scoring.sustainReps);
-      const sustained = next.length === cfg.scoring.sustainReps - 1 && next.every((r) => r.status !== 'green');
-      if (sustained) return { rep: rep.index, kind: 'change', causes: changedMetrics(rep, cfg).slice(0, 3) };
+    if (!off(rep)) continue;
+    // The change has to persist: the following rep(s) must also be off
+    // baseline. One odd rep followed by normal reps is reported as isolated.
+    // At the very end of the set, a red rep with nothing after it still counts.
+    const next = after.slice(k + 1, k + 1 + need);
+    const run = [rep, ...next];
+    const sustained = next.length === need ? next.every(off) : next.every(off) && run.some((r) => r.status === 'red');
+    if (sustained) {
+      return {
+        rep: rep.index,
+        kind: run.some((r) => r.status === 'red') ? 'breakdown' : 'change',
+        causes: changedMetrics(rep, cfg).slice(0, 3),
+      };
     }
   }
   return null;
@@ -150,7 +165,11 @@ export function scoreSet(reps, cfg, { painReported = false } = {}) {
     rep.isBaseline = baselineReps.includes(rep);
     rep.deviations = {};
     for (const [key, def] of Object.entries(cfg.metrics)) rep.deviations[key] = deviation(rep.metrics[key], stats[key], def);
-    if (rep.scorable) Object.assign(rep, scoreRep(rep, cfg));
+    if (rep.scorable) {
+      Object.assign(rep, scoreRep(rep, cfg));
+      // A partial rep is a change in itself, even if its measured range stayed near the baseline's.
+      if (rep.partial && rep.status === 'green' && !rep.isBaseline) rep.status = 'yellow';
+    }
     else Object.assign(rep, { score: null, status: 'unknown' });
   }
   const scored = reps.filter((r) => r.scorable);

@@ -41,7 +41,7 @@ export default {
   // signal rises as the handle is pulled in.
   reps: {
     concentricFirst: true,
-    minAbsProminence: 30,
+    minAbsProminence: 25, // the elbow must bend at least 25° (real rows move 60°+; resting jitter is about ±5°)
     minProminenceFrac: 0.35,
     partialFrac: 0.65,
     restTolFrac: 0.12,
@@ -50,6 +50,8 @@ export default {
     maxRepSec: 12,
     minReps: 2,
   },
+
+  camera: { maxJumpTorso: 0.6, maxTorsoSpread: 1.28 },
 
   baseline: { maxReps: 3, threeRepMinSet: 6 },
 
@@ -114,7 +116,7 @@ export default {
       weight: 0.6,
       reliability: 'low',
       description: 'How much the gap between ear and shoulder closes during the pull. Head movement also changes this, so treat it as approximate.',
-      phrase: { worse: 'your shoulders started creeping up ({base} → {value})' },
+      phrase: { worse: 'your shoulders started creeping up (shrug {range})' },
     },
     lowerTime: {
       label: 'Return time',

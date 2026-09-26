@@ -21,5 +21,7 @@ export async function runAnalysis({ prepared, exerciseId, painReported, onProgre
   await new Promise((r) => setTimeout(r, 30));
   const analysis = analyzeTrack(track, exerciseId, { painReported });
   analysis.delegate = track.delegate;
+  // Dev builds keep the raw track so thresholds can be re-tuned from the console.
+  if (import.meta.env.DEV) analysis._track = track;
   return analysis;
 }

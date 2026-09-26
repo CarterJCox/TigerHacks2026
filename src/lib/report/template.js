@@ -3,7 +3,8 @@
 // or when an LLM response fails the safety checks.
 
 import { getExercise } from '../../config/exercises/index.js';
-import { changePhrase, fmt, joinAnd, listReps } from './format.js';
+import { changePhrase, fmtLong, joinAnd, listReps } from './format.js';
+import { changedMetrics } from '../analysis/scoring.js';
 
 function heldText(k) {
   if (k <= 1) return null;
@@ -22,7 +23,16 @@ export function buildHeadline(analysis) {
     return `${lead}: ${joinAnd(causes)}.`;
   }
   if (isolated.length) {
-    return `Form held across the set, with a brief change on ${listReps(isolated)} that did not carry into the next rep.`;
+    const worst = isolated
+      .map((i) => reps.find((r) => r.index === i))
+      .map((r) => ({ r, c: changedMetrics(r, cfg)[0] }))
+      .filter((x) => x.c)
+      .sort((a, b) => b.c.severity * b.c.def.weight - a.c.severity * a.c.def.weight)[0];
+    const detail = worst ? `${changePhrase(worst.c.key, worst.c, cfg.metrics[worst.c.key])}` : null;
+    if (isolated.length === 1) {
+      return `Form held across the set apart from rep ${isolated[0]}${detail ? `, where ${detail}` : ''}; the rep after it returned to your baseline.`;
+    }
+    return `Form held across the set apart from brief changes on ${listReps(isolated)}, none of which carried into the next rep${detail ? `. The largest was on rep ${worst.r.index}: ${detail}` : ''}.`;
   }
   const nb = analysis.baselineReps.length;
   return `Form held steady across all ${scored.length} scored reps; every rep stayed within the range of your ${nb === 1 ? 'baseline rep' : `${nb} baseline reps`}.`;
@@ -33,7 +43,7 @@ function baselineDescription(analysis, cfg) {
   const parts = keys
     .map((k) => ({ k, s: analysis.stats[k] }))
     .filter(({ s }) => Number.isFinite(s.mean))
-    .map(({ k, s }) => `${cfg.metrics[k].label.toLowerCase()} ${fmt(s.mean, cfg.metrics[k])}`);
+    .map(({ k, s }) => `${cfg.metrics[k].label.toLowerCase()} ${fmtLong(s.mean, cfg.metrics[k])}`);
   return joinAnd(parts);
 }
 
@@ -62,7 +72,8 @@ export function buildSummary(analysis, input) {
   if (breakdown) {
     const after = reps.filter((r) => r.scorable && r.index >= breakdown.rep);
     const off = after.filter((r) => r.status !== 'green');
-    sentences.push(`From rep ${breakdown.rep} on, ${off.length} of ${after.length} rep${after.length === 1 ? '' : 's'} stayed outside that baseline.`);
+    if (after.length === 1) sentences.push(`Rep ${breakdown.rep} was the last scored rep of the set.`);
+    else sentences.push(`From rep ${breakdown.rep} on, ${off.length} of ${after.length} rep${after.length === 1 ? '' : 's'} stayed outside that baseline.`);
   }
 
   // The single largest change in the set.
@@ -75,7 +86,11 @@ export function buildSummary(analysis, input) {
       if (!worst || score > worst.score) worst = { rep: r.index, key, d, score };
     }
   }
-  if (worst && (!breakdown || worst.rep !== breakdown.rep || !breakdown.causes.slice(0, 2).some((c) => c.key === worst.key))) {
+  // Skip it when the headline already names it.
+  const inHeadline = breakdown
+    ? worst && worst.rep === breakdown.rep && breakdown.causes.slice(0, 2).some((c) => c.key === worst.key)
+    : analysis.isolated.length > 0;
+  if (worst && !inHeadline) {
     sentences.push(`The largest single change was on rep ${worst.rep}, where ${changePhrase(worst.key, worst.d, cfg.metrics[worst.key])}.`);
   }
   return sentences.join(' ');

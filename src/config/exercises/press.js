@@ -43,11 +43,13 @@ export default {
     minShoulderRatio: 0.45,
   },
 
+  camera: { maxJumpTorso: 0.6, maxTorsoSpread: 1.28 },
+
   // Rep detection runs on average wrist height above the shoulders (% torso),
   // so the signal rises as the dumbbells go up.
   reps: {
     concentricFirst: true,
-    minAbsProminence: 25, // wrists must travel at least 25% of torso length
+    minAbsProminence: 20, // wrists must travel at least 20% of torso length
     minProminenceFrac: 0.35,
     partialFrac: 0.65,
     restTolFrac: 0.12,
@@ -75,7 +77,7 @@ export default {
       weight: 1,
       reliability: 'high',
       description: 'How far the wrists travel from the bottom of the rep to lockout, as a percentage of torso length.',
-      phrase: { worse: 'pressing range dropped {pct}% ({base} → {value})' },
+      phrase: { worse: 'pressing range dropped {pct}% ({range})' },
     },
     heightAsym: {
       label: 'Left/right height gap at the top',
@@ -90,7 +92,7 @@ export default {
       weight: 1,
       reliability: 'medium',
       description: 'Difference in wrist height between the two arms at the top of the rep.',
-      phrase: { worse: 'one arm started finishing lower than the other ({base} → {value} height gap)' },
+      phrase: { worse: 'one arm started finishing lower than the other (height gap {range})' },
     },
     elbowAsym: {
       label: 'Left/right lockout gap',
@@ -135,7 +137,7 @@ export default {
       weight: 0.8,
       reliability: 'medium',
       description: 'How far the hips dip and rise during the rep. Near zero when seated or when the press comes only from the arms.',
-      phrase: { worse: 'your legs started helping the press ({base} → {value} hip dip)' },
+      phrase: { worse: 'your legs started helping the press (hip dip {range})' },
     },
     lowerTime: {
       label: 'Lowering time',

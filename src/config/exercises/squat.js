@@ -41,7 +41,7 @@ export default {
   // signal rises on the way down.
   reps: {
     concentricFirst: false, // the lowering phase comes first
-    minAbsProminence: 35,
+    minAbsProminence: 30, // the knee must bend at least 30°
     minProminenceFrac: 0.35,
     partialFrac: 0.65,
     restTolFrac: 0.12,
@@ -50,6 +50,8 @@ export default {
     maxRepSec: 12,
     minReps: 2,
   },
+
+  camera: { maxJumpTorso: 0.6, maxTorsoSpread: 1.28 },
 
   baseline: { maxReps: 3, threeRepMinSet: 6 },
 
@@ -114,7 +116,7 @@ export default {
       weight: 0.6,
       reliability: 'low',
       description: 'How far the heel rises relative to the toes, as a percentage of foot length. Foot landmarks are the least stable points the pose model tracks.',
-      phrase: { worse: 'your heels started lifting ({base} → {value})' },
+      phrase: { worse: 'your heels started lifting ({range})' },
     },
     lowerTime: {
       label: 'Descent time',

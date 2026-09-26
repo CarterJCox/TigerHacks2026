@@ -82,7 +82,9 @@ function parseTrak(view, start, end) {
   const track = { handler: null, codec: null, tkhd: null };
   const visit = (type, s, e) => {
     if (type === 'tkhd') track.tkhd = parseTkhd(view, s);
-    else if (type === 'hdlr') track.handler = fourcc(view, s + 8);
+    // The media handler comes first (mdia > hdlr). QuickTime files also have a
+    // data-reference handler inside minf (e.g. 'alis') that must not override it.
+    else if (type === 'hdlr') track.handler = track.handler || fourcc(view, s + 8);
     else if (type === 'stsd') {
       // version/flags (4) + entry count (4), then the first sample entry.
       if (s + 16 <= e) track.codec = fourcc(view, s + 12);

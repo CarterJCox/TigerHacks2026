@@ -3,7 +3,9 @@
 // Every threshold used to analyze a curl lives in this file. Units:
 //   degrees (°) for angles, seconds (s) for time.
 // Metric thresholds are compared against the user's own baseline reps
-// (the first 2-3 clean reps of the same set), never against an ideal.
+// (the first 2-3 clean reps of the same set), never against an ideal. A rep
+// only counts as changed by how far it goes beyond the range the baseline reps
+// already covered (e.g. below the smallest baseline range of motion).
 //   mode 'absolute': notable/major are in the metric's own unit.
 //   mode 'relative': notable/major are fractions of the baseline value
 //                    (0.25 = a 25% change).
@@ -53,11 +55,18 @@ export default {
     maxShoulderRatio: 0.55,
   },
 
+  // Camera stability. A still camera is required: joint angles and distances
+  // are meaningless if the frame zooms or the shot cuts.
+  camera: {
+    maxJumpTorso: 0.6, // hips moving more than 0.6 torso lengths in one frame (1/15 s) = a cut or camera jump
+    maxTorsoSpread: 1.28, // torso size varying more than 28% across the clip = zoom or camera moved (still-camera clips measured 1.13-1.17)
+  },
+
   // Rep detection runs on elbow flexion (180° minus the elbow angle), so the
   // signal rises as the dumbbell comes up.
   reps: {
     concentricFirst: true, // the lifting phase comes first (curl up, then lower)
-    minAbsProminence: 35, // a rep must bend the elbow at least 35°
+    minAbsProminence: 30, // a rep must bend the elbow at least 30°
     minProminenceFrac: 0.35, // ...and at least 35% of the set's full elbow range
     partialFrac: 0.65, // reps under 65% of a typical rep's range are marked partial
     restTolFrac: 0.12, // within 12% of the bottom counts as "at rest" (pauses are excluded from tempo)
@@ -77,7 +86,7 @@ export default {
     penaltyPerMajor: 30, // a metric at its "major" threshold costs 30 points x weight
     yellowBelow: 85, // score under 85 -> yellow even if no single metric crossed "notable"
     redBelow: 60, // score under 60 -> red
-    sustainReps: 2, // two non-green reps in a row count as a form change even without a red rep
+    sustainReps: 2, // the breakdown point needs 2 off-baseline reps in a row (a red final rep also counts); one-off reps are reported as isolated
   },
 
   metrics: {

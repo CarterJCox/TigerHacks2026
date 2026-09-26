@@ -46,7 +46,11 @@ export default function RepTable({ analysis, selectedRep, onRep }) {
               return (
                 <td key={k} className="num">
                   <span className="cell-value">{fmtNum(s.mean, def)}</span>
-                  {s.n > 1 && <span className="cell-delta muted">±{fmtNum(s.sd, def)}</span>}
+                  {s.n > 1 && (
+                    <span className="cell-delta muted">
+                      {fmtNum(s.min, def)}–{fmtNum(s.max, def)}
+                    </span>
+                  )}
                 </td>
               );
             })}

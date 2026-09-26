@@ -44,10 +44,12 @@ export default function RepChart({ analysis, selectedRep, onRep }) {
   let bandHi = null;
   if (def) {
     const vals = reps.map((r) => r.metrics[mode]).filter(Number.isFinite);
-    const allowance = (def.mode === 'relative' ? def.notable * Math.abs(stat.mean) : def.notable) + (stat.sd || 0);
+    // Shaded zone: the baseline reps' range, extended by the "notable"
+    // threshold in the direction that counts as worse.
+    const allowance = def.mode === 'relative' ? def.notable * Math.abs(stat.mean) : def.notable;
     if (Number.isFinite(stat.mean)) {
-      bandLo = def.direction === 'increase' ? stat.mean - (stat.sd || 0) : stat.mean - allowance;
-      bandHi = def.direction === 'decrease' ? stat.mean + (stat.sd || 0) : stat.mean + allowance;
+      bandLo = def.direction === 'increase' ? stat.min : stat.min - allowance;
+      bandHi = def.direction === 'decrease' ? stat.max : stat.max + allowance;
       vals.push(bandLo, bandHi);
     }
     lo = Math.min(...vals);
@@ -130,7 +132,7 @@ export default function RepChart({ analysis, selectedRep, onRep }) {
               <rect x={PAD.left} width={innerW} y={y(bandHi)} height={Math.max(1, y(bandLo) - y(bandHi))} className="baseline-band" />
               <line x1={PAD.left} x2={PAD.left + innerW} y1={y(stat.mean)} y2={y(stat.mean)} className="baseline-line" />
               <text x={PAD.left + innerW} y={y(bandHi) - 6} className="band-label" textAnchor="end">
-                Baseline {fmt(stat.mean, def)} and normal variation
+                Baseline average {fmt(stat.mean, def)} · shaded: baseline range plus allowed drift
               </text>
             </g>
           )}

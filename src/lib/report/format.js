@@ -7,14 +7,29 @@ export function round(v, decimals = 0) {
   return Math.round(v * f) / f;
 }
 
-/** "45°", "0.68 s", "32% torso" */
+const PERCENT_OF = { '% torso': 'of torso length', '% foot': 'of foot length' };
+
+/** "45°", "0.68 s", "32%" (percent-of-body units get their context from fmtRange/fmtLong) */
 export function fmt(v, def) {
   const r = round(v, def.decimals);
   if (r === null) return '–';
   const n = def.decimals ? r.toFixed(def.decimals) : String(r);
   if (def.unit === '°') return `${n}°`;
   if (def.unit === 's') return `${n} s`;
-  return `${n}${def.unit.startsWith('%') ? '' : ' '}${def.unit}`;
+  if (def.unit.startsWith('%')) return `${n}%`;
+  return `${n} ${def.unit}`;
+}
+
+/** "32% of torso length", otherwise the same as fmt. */
+export function fmtLong(v, def) {
+  const base = fmt(v, def);
+  return PERCENT_OF[def.unit] && base !== '–' ? `${base} ${PERCENT_OF[def.unit]}` : base;
+}
+
+/** "21% → 40% of torso length", "9° → 15°" */
+export function fmtRange(a, b, def) {
+  const text = `${fmt(a, def)} → ${fmt(b, def)}`;
+  return PERCENT_OF[def.unit] ? `${text} ${PERCENT_OF[def.unit]}` : text;
 }
 
 /** Number only, for table cells whose column header carries the unit. */
@@ -32,8 +47,10 @@ export function fmtDelta(d, def) {
     return `${p > 0 ? '+' : p < 0 ? '−' : '±'}${Math.abs(p)}%`;
   }
   const r = round(d.delta, def.decimals);
-  const body = fmt(Math.abs(r), def);
-  return `${r > 0 ? '+' : r < 0 ? '−' : '±'}${body}`;
+  const sign = r > 0 ? '+' : r < 0 ? '−' : '±';
+  // Absolute changes in a percent-of-body unit are percentage points.
+  if (PERCENT_OF[def.unit]) return `${sign}${fmtNum(Math.abs(r), def)} pts`;
+  return `${sign}${fmt(Math.abs(r), def)}`;
 }
 
 export function pctAbs(d) {
@@ -60,12 +77,13 @@ export function listReps(indices) {
       prev = cur;
       continue;
     }
-    parts.push(s === prev ? `${s}` : prev === s + 1 ? `${s}, ${prev}` : `${s}–${prev}`);
+    parts.push(s === prev ? `${s}` : prev === s + 1 ? `${s} and ${prev}` : `${s}–${prev}`);
     s = cur;
     prev = cur;
   }
   const label = sorted.length === 1 ? 'rep' : 'reps';
   if (parts.length === 1) return `${label} ${parts[0]}`;
+  if (parts.some((x) => x.includes(' and '))) return `${label} ${parts.map((x) => x.replace(' and ', ', ')).join(', ')}`;
   return `${label} ${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
 
@@ -81,10 +99,11 @@ export function fillPhrase(template, d, def) {
     .replace('{pct}', String(pctAbs(d) ?? '–'))
     .replace('{base}', fmt(d.base, def))
     .replace('{value}', fmt(d.value, def))
+    .replace('{range}', fmtRange(d.base, d.value, def))
     .replace('{delta}', fmtDelta(d, def));
 }
 
 export function changePhrase(key, d, def) {
   if (def.phrase?.worse) return fillPhrase(def.phrase.worse, d, def);
-  return `${def.label.toLowerCase()} changed from ${fmt(d.base, def)} to ${fmt(d.value, def)}`;
+  return `${def.label.toLowerCase()} changed (${fmtRange(d.base, d.value, def)})`;
 }

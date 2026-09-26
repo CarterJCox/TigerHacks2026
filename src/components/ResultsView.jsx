@@ -4,7 +4,7 @@ import VideoPlayer from './VideoPlayer.jsx';
 import RepChart from './RepChart.jsx';
 import RepTable from './RepTable.jsx';
 import { STATUS } from './status.js';
-import { changePhrase, fmt, fmtDelta, listReps } from '../lib/report/format.js';
+import { changePhrase, fmt, fmtDelta, fmtRange, listReps } from '../lib/report/format.js';
 import { painNotice } from '../lib/report/template.js';
 
 const LEVEL_WORD = { notable: 'Notable', major: 'Major' };
@@ -43,7 +43,7 @@ function RepDetail({ analysis, repIndex, onPlay }) {
         </p>
       )}
       {rep.partial && <p className="small">Partial rep: it covered less than {Math.round(cfg.reps.partialFrac * 100)}% of a typical rep's range.</p>}
-      {rep.scorable && !rep.isBaseline && changed.length === 0 && <p className="small">Every measure stayed within your baseline range.</p>}
+      {rep.scorable && !rep.isBaseline && !rep.partial && changed.length === 0 && <p className="small">Every measure stayed within your baseline range.</p>}
       {rep.isBaseline && <p className="small">One of the reps the rest of the set is compared against.</p>}
       {changed.length > 0 && (
         <ul className="change-list">
@@ -53,7 +53,7 @@ function RepDetail({ analysis, repIndex, onPlay }) {
               <li key={key} className={`lvl-${d.level}`}>
                 <span className="change-level">{LEVEL_WORD[d.level]}</span>
                 <span className="change-text">
-                  <strong>{def.label}</strong>: {fmt(d.base, def)} → {fmt(d.value, def)} ({fmtDelta(d, def)})
+                  <strong>{def.label}</strong>: {fmtRange(d.base, d.value, def)} ({fmtDelta(d, def)})
                 </span>
               </li>
             );
@@ -101,7 +101,7 @@ function RiskList({ analysis, onRep }) {
               </button>
             </div>
             <p className="risk-evidence">
-              <span className="evidence-label">{def.label}</span> {fmt(r.first.base, def)} baseline → {fmt(r.first.value, def)} on rep {r.firstRep} (
+              <span className="evidence-label">{def.label}</span>: {fmtRange(r.first.base, r.first.value, def)} from baseline to rep {r.firstRep} (
               {fmtDelta(r.first, def)})
               {r.worstRep !== r.firstRep && (
                 <>
@@ -167,7 +167,13 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
             <dt>Form held through</dt>
             <dd>
               {analysis.breakdown ? `Rep ${analysis.breakdown.rep - 1}` : 'Every rep'}
-              <span className="stat-sub">{analysis.breakdown ? `changed at rep ${analysis.breakdown.rep}` : `${scorable.length} scored`}</span>
+              <span className="stat-sub">
+                {analysis.breakdown
+                  ? `changed at rep ${analysis.breakdown.rep}`
+                  : analysis.isolated.length
+                    ? `apart from ${analysis.isolated.length === 1 ? 'one brief change' : `${analysis.isolated.length} brief changes`}`
+                    : `${scorable.length} scored`}
+              </span>
             </dd>
           </div>
           <div className="stat">

@@ -281,8 +281,11 @@ const VideoPlayer = forwardRef(function VideoPlayer({ src, rotation, analysis, s
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onLoadedData={() => {
+            readyRef.current = true;
+            setReady(true);
             dirtyRef.current = true;
           }}
+          onCanPlay={() => setReady(true)}
           onSeeked={() => {
             dirtyRef.current = true;
           }}

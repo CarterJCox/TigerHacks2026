@@ -65,7 +65,9 @@ function argMinRange(s, a, b) {
  * @returns {{ reps: Rep[], range: number, minProminence: number, smoothed: Float32Array }}
  */
 export function detectReps(signalRaw, times, cfg) {
-  const s = smoothSeries(signalRaw, 1.2);
+  // Light extra smoothing on top of the keypoint smoothing, just enough to
+  // stop single-frame wobbles from splitting a peak.
+  const s = smoothSeries(signalRaw, 1.0);
   const finite = [];
   for (const v of s) if (Number.isFinite(v)) finite.push(v);
   if (finite.length < 8) return { reps: [], range: 0, minProminence: cfg.minAbsProminence, smoothed: s };

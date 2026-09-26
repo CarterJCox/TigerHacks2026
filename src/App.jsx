@@ -72,6 +72,7 @@ export default function App() {
           onProgress: setProgress,
         });
         if (controller.signal.aborted) return;
+        if (import.meta.env.DEV) window.__spotter = { analysis };
         if (analysis.status !== 'ok') {
           setResult({ analysis, input: finalInput });
           setScreen('rejected');

@@ -98,6 +98,41 @@ export function assessQuality(track, sm, cfg, ctx, required) {
   stats.torsoFraction = torso / Math.max(track.width, track.height);
   stats.shoulderRatio = median(shoulderSpans) / torso;
 
+  // Camera stability. Torso length barely changes during these lifts, so a
+  // large spread means zooming or the camera moving closer/farther; a jump of
+  // the hips between consecutive frames that no body could make means a cut.
+  const sorted = [...torsoLens].sort((a, b) => a - b);
+  const p = (q) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * q)))];
+  stats.torsoSpread = sorted.length > 10 ? p(0.95) / p(0.05) : 1;
+  const hipMid = (i) => {
+    if (i < 0 || i >= n || !track.hasPose[i]) return null;
+    const lh = at(i, LM.leftHip);
+    const rh = at(i, LM.rightHip);
+    return { x: (lh.x + rh.x) / 2, y: (lh.y + rh.y) / 2 };
+  };
+  const far = (a, b) => a && b && Math.hypot(a.x - b.x, a.y - b.y) > cfg.camera.maxJumpTorso * torso;
+  const cuts = [];
+  for (let i = 1; i < n; i++) {
+    const before = hipMid(i - 1);
+    // A cut stays displaced; a one-frame tracking glitch snaps back.
+    if (far(hipMid(i), before) && far(hipMid(i + 2), before) && far(hipMid(i + 4), before)) cuts.push(track.times[i]);
+  }
+  stats.cuts = cuts;
+  if (cuts.length) {
+    const at0 = cuts[0];
+    issues.push({
+      code: 'camera_cut',
+      title: 'The video jumps between shots',
+      message: `Your position jumped further than a body can move in one frame (first at ${Math.floor(at0 / 60)}:${(at0 % 60).toFixed(1).padStart(4, '0')}), which usually means an edited clip or a camera that was moved. Record the whole set in one continuous take with the phone kept still.`,
+    });
+  } else if (stats.torsoSpread > cfg.camera.maxTorsoSpread) {
+    issues.push({
+      code: 'camera_moved',
+      title: 'The camera moved or zoomed during the set',
+      message: `Your torso's size in the frame changed by ${Math.round((stats.torsoSpread - 1) * 100)}% during the clip (under ${Math.round((cfg.camera.maxTorsoSpread - 1) * 100)}% is expected with a still camera). Joint angles and distances need a fixed camera: prop the phone up and don't zoom while recording.`,
+    });
+  }
+
   if (stats.torsoFraction < cfg.pose.minTorsoFraction) {
     issues.push({
       code: 'too_far',

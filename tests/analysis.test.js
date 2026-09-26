@@ -81,6 +81,30 @@ describe('curl analysis', () => {
     expect(res.issues[0].code).toBe('no_reps');
   });
 
+  it('rejects an edited clip that cuts between shots', () => {
+    const track = sideTrack(curlSet(Array.from({ length: 6 }, () => clean)));
+    const cutAt = Math.floor(track.n / 2);
+    for (let i = cutAt; i < track.n; i++) for (let j = 0; j < 33; j++) track.raw[(i * 33 + j) * 4] -= 0.3;
+    const res = analyzeTrack(track, 'curl');
+    expect(res.status).toBe('rejected');
+    expect(res.issues.map((i) => i.code)).toContain('camera_cut');
+  });
+
+  it('rejects a clip where the camera zooms', () => {
+    const track = sideTrack(curlSet(Array.from({ length: 6 }, () => clean)));
+    for (let i = 0; i < track.n; i++) {
+      const z = 1 + 0.6 * (i / track.n);
+      for (let j = 0; j < 33; j++) {
+        const b = (i * 33 + j) * 4;
+        track.raw[b] = 0.5 + (track.raw[b] - 0.5) * z;
+        track.raw[b + 1] = 0.5 + (track.raw[b + 1] - 0.5) * z;
+      }
+    }
+    const res = analyzeTrack(track, 'curl');
+    expect(res.status).toBe('rejected');
+    expect(res.issues.map((i) => i.code)).toContain('camera_moved');
+  });
+
   it('rejects when the person is missing from most frames', () => {
     const tl = curlSet(Array.from({ length: 5 }, () => clean));
     const n = Math.floor(tl.total * 15) + 1;

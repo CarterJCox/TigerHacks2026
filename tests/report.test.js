@@ -30,6 +30,20 @@ describe('template report', () => {
     expect(buildTemplateReport(a, {}).headline).toMatch(/^Form held steady across all 6/);
   });
 
+  it('reports a one-off bad rep as isolated, not as the breakdown point', () => {
+    const tl = curlSet([...Array(5).fill(clean), bad, clean, clean]);
+    const a = analyzeTrack(sideTrack(tl), 'curl');
+    expect(a.breakdown).toBeNull();
+    expect(a.isolated).toEqual([6]);
+    expect(buildTemplateReport(a, {}).headline).toMatch(/^Form held across the set apart from rep 6, where .*; the rep after it returned to your baseline\.$/);
+  });
+
+  it('counts a red final rep as the breakdown point', () => {
+    const tl = curlSet([...Array(6).fill(clean), bad]);
+    const a = analyzeTrack(sideTrack(tl), 'curl');
+    expect(a.breakdown?.rep).toBe(7);
+  });
+
   it('gives no cues when pain is reported', () => {
     const tl = curlSet([...Array(5).fill(clean), ...Array(3).fill(bad)]);
     const a = analyzeTrack(sideTrack(tl), 'curl', { painReported: true });
