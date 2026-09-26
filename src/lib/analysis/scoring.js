@@ -1,0 +1,166 @@
+// scoring.js: Compares every rep with the user's own baseline reps and finds where form
+// changed. All thresholds come from the exercise config.
+
+import { mean, stdev } from './geometry.js';
+
+const LEVEL_RANK = { ok: 0, notable: 1, major: 2 };
+
+export function selectBaseline(reps, cfg) {
+  const scorable = reps.filter((r) => r.scorable);
+  const count = scorable.length >= cfg.baseline.threeRepMinSet ? cfg.baseline.maxReps : scorable.length >= 3 ? 2 : 1;
+  const full = scorable.filter((r) => !r.partial);
+  const chosen = full.slice(0, count);
+  // If there aren't enough full reps early on, fall back to the first scorable ones.
+  for (const r of scorable) {
+    if (chosen.length >= count) break;
+    if (!chosen.includes(r)) chosen.push(r);
+  }
+  chosen.sort((a, b) => a.index - b.index);
+  return chosen;
+}
+
+export function baselineStats(baselineReps, metricDefs) {
+  const stats = {};
+  for (const key of Object.keys(metricDefs)) {
+    const values = baselineReps.map((r) => r.metrics[key]).filter(Number.isFinite);
+    stats[key] = {
+      mean: mean(values),
+      sd: stdev(values),
+      min: values.length ? Math.min(...values) : NaN,
+      max: values.length ? Math.max(...values) : NaN,
+      n: values.length,
+    };
+  }
+  return stats;
+}
+
+export function deviation(value, stat, def) {
+  if (!Number.isFinite(value) || !stat || !Number.isFinite(stat.mean)) {
+    return { value, base: stat?.mean ?? NaN, delta: NaN, pct: NaN, norm: 0, severity: 0, level: 'na' };
+  }
+  const delta = value - stat.mean;
+  const pct = Math.abs(stat.mean) > 1e-6 ? delta / Math.abs(stat.mean) : NaN;
+  const bad = def.direction === 'increase' ? delta : def.direction === 'decrease' ? -delta : Math.abs(delta);
+  // Ignore the part of the change that is within the baseline reps' own spread.
+  let adj = Math.max(0, bad - stat.sd);
+  if (Math.abs(delta) < def.minAbsChange) adj = 0;
+  const norm = def.mode === 'relative' ? adj / Math.max(Math.abs(stat.mean), def.minAbsChange) : adj;
+  const level = norm >= def.major ? 'major' : norm >= def.notable ? 'notable' : 'ok';
+  return { value, base: stat.mean, delta, pct, norm, severity: norm / def.major, level, worse: bad > 0 };
+}
+
+function scoreRep(rep, cfg) {
+  let penalty = 0;
+  let hasMajor = false;
+  let hasNotable = false;
+  for (const [key, def] of Object.entries(cfg.metrics)) {
+    const d = rep.deviations[key];
+    if (!d || d.level === 'na') continue;
+    penalty += def.weight * cfg.scoring.penaltyPerMajor * Math.min(d.severity, 1.5);
+    if (d.level === 'major' && def.maxStatus !== 'yellow') hasMajor = true;
+    if (d.level === 'notable' || d.level === 'major') hasNotable = true;
+  }
+  const score = Math.max(0, Math.round(100 - penalty));
+  let status = 'green';
+  if (hasMajor || score < cfg.scoring.redBelow) status = 'red';
+  else if (hasNotable || score < cfg.scoring.yellowBelow) status = 'yellow';
+  return { score, status };
+}
+
+/** Metrics that moved past "notable", worst first. */
+export function changedMetrics(rep, cfg) {
+  return Object.entries(rep.deviations || {})
+    .filter(([, d]) => LEVEL_RANK[d.level] >= 1)
+    .map(([key, d]) => ({ key, ...d, def: cfg.metrics[key] }))
+    .sort((a, b) => b.severity * b.def.weight - a.severity * a.def.weight);
+}
+
+export function findBreakdown(reps, baselineReps, cfg) {
+  const lastBaseline = baselineReps.length ? baselineReps[baselineReps.length - 1].index : 0;
+  const after = reps.filter((r) => r.scorable && r.index > lastBaseline);
+  for (let k = 0; k < after.length; k++) {
+    const rep = after[k];
+    if (rep.status === 'red') {
+      return { rep: rep.index, kind: 'breakdown', causes: changedMetrics(rep, cfg).slice(0, 3) };
+    }
+    if (rep.status === 'yellow') {
+      const next = after.slice(k + 1, k + cfg.scoring.sustainReps);
+      const sustained = next.length === cfg.scoring.sustainReps - 1 && next.every((r) => r.status !== 'green');
+      if (sustained) return { rep: rep.index, kind: 'change', causes: changedMetrics(rep, cfg).slice(0, 3) };
+    }
+  }
+  return null;
+}
+
+export function findRisks(reps, cfg) {
+  const out = [];
+  for (const risk of cfg.risks) {
+    const def = cfg.metrics[risk.metric];
+    const hits = reps.filter(
+      (r) => r.scorable && !r.isBaseline && LEVEL_RANK[r.deviations[risk.metric]?.level] >= LEVEL_RANK[risk.minLevel],
+    );
+    if (!hits.length) continue;
+    const worst = hits.reduce((w, r) => (r.deviations[risk.metric].severity > w.deviations[risk.metric].severity ? r : w));
+    const first = hits[0];
+    out.push({
+      ...risk,
+      def,
+      firstRep: first.index,
+      reps: hits.map((r) => r.index),
+      first: first.deviations[risk.metric],
+      worstRep: worst.index,
+      worst: worst.deviations[risk.metric],
+    });
+  }
+  return out.sort((a, b) => a.firstRep - b.firstRep || b.worst.severity - a.worst.severity);
+}
+
+export function pickCues(breakdown, risks, reps, cfg, painReported) {
+  if (painReported) return [];
+  const order = [];
+  if (breakdown) order.push(...breakdown.causes.map((c) => c.key));
+  order.push(...[...risks].sort((a, b) => b.worst.severity - a.worst.severity).map((r) => r.metric));
+  // Any other metric that crossed "notable" somewhere, worst first.
+  const worstByMetric = {};
+  for (const r of reps) {
+    if (!r.scorable || r.isBaseline) continue;
+    for (const [key, d] of Object.entries(r.deviations)) {
+      if (LEVEL_RANK[d.level] >= 1) worstByMetric[key] = Math.max(worstByMetric[key] || 0, d.severity);
+    }
+  }
+  order.push(...Object.keys(worstByMetric).sort((a, b) => worstByMetric[b] - worstByMetric[a]));
+  const cues = [];
+  for (const key of order) {
+    const text = cfg.cues[key];
+    if (text && !cues.some((c) => c.text === text)) cues.push({ text, metric: key });
+    if (cues.length === 2) break;
+  }
+  if (!cues.length) cues.push({ text: cfg.defaultCue, metric: null });
+  return cues;
+}
+
+/**
+ * Mutates reps with isBaseline / deviations / score / status and returns the
+ * set-level summary.
+ */
+export function scoreSet(reps, cfg, { painReported = false } = {}) {
+  const baselineReps = selectBaseline(reps, cfg);
+  const stats = baselineStats(baselineReps, cfg.metrics);
+  for (const rep of reps) {
+    rep.isBaseline = baselineReps.includes(rep);
+    rep.deviations = {};
+    for (const [key, def] of Object.entries(cfg.metrics)) rep.deviations[key] = deviation(rep.metrics[key], stats[key], def);
+    if (rep.scorable) Object.assign(rep, scoreRep(rep, cfg));
+    else Object.assign(rep, { score: null, status: 'unknown' });
+  }
+  const scored = reps.filter((r) => r.scorable);
+  const setScore = scored.length ? Math.round(mean(scored.map((r) => r.score))) : null;
+  const breakdown = findBreakdown(reps, baselineReps, cfg);
+  const lastBaseline = baselineReps.length ? baselineReps[baselineReps.length - 1].index : 0;
+  const isolated = breakdown
+    ? []
+    : reps.filter((r) => r.scorable && r.index > lastBaseline && r.status !== 'green').map((r) => r.index);
+  const risks = findRisks(reps, cfg);
+  const cues = pickCues(breakdown, risks, reps, cfg, painReported);
+  return { baselineReps: baselineReps.map((r) => r.index), stats, setScore, breakdown, isolated, risks, cues };
+}
