@@ -4,7 +4,7 @@ import VideoPlayer from './VideoPlayer.jsx';
 import RepChart from './RepChart.jsx';
 import RepTable from './RepTable.jsx';
 import { STATUS } from './status.js';
-import { changePhrase, fmt, fmtDelta, fmtRange, listReps } from '../lib/report/format.js';
+import { changePhrase, fmt, fmtDelta, fmtLong, fmtRange, listReps } from '../lib/report/format.js';
 import { painNotice } from '../lib/report/template.js';
 
 const LEVEL_WORD = { notable: 'Notable', major: 'Major' };
@@ -209,7 +209,7 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
             <div className="breakdown-card">
               <p className="eyebrow">Breakdown point</p>
               <p className="breakdown-rep">Rep {analysis.breakdown.rep}</p>
-              <p className="small">{causesLine}.</p>
+              <p className="small">{causesLine ? `${causesLine[0].toUpperCase()}${causesLine.slice(1)}.` : ''}</p>
             </div>
           )}
         </aside>
@@ -295,8 +295,9 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
                   <br />
                   <span className="muted">{def.description}</span>{' '}
                   <span className="muted">
-                    Flagged at {def.mode === 'relative' ? `${Math.round(def.notable * 100)}%` : fmt(def.notable, def)} change, major at{' '}
-                    {def.mode === 'relative' ? `${Math.round(def.major * 100)}%` : fmt(def.major, def)}.
+                    Flagged when a rep goes{' '}
+                    {def.mode === 'relative' ? `${Math.round(def.notable * 100)}% of the baseline average` : fmtLong(def.notable, def)} beyond your baseline
+                    range (major at {def.mode === 'relative' ? `${Math.round(def.major * 100)}%` : fmtLong(def.major, def)}).
                   </span>
                 </li>
               ))}

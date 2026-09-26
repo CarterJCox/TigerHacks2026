@@ -101,6 +101,20 @@ export default function App() {
     [],
   );
 
+  // Dev-only: render an analysis produced in the console (used to review UI states).
+  useEffect(() => {
+    if (!import.meta.env.DEV) return undefined;
+    window.__spotterShow = (analysis, overrides = {}) => {
+      const finalInput = { ...input, exerciseId: analysis.exerciseId, ...overrides };
+      setInput(finalInput);
+      setResult({ analysis, input: finalInput, report: buildTemplateReport(analysis, finalInput), llmPending: false });
+      setScreen('results');
+    };
+    return () => {
+      delete window.__spotterShow;
+    };
+  }, [input]);
+
   const cancelAnalysis = useCallback(() => {
     abortRef.current?.abort();
     setProgress(null);

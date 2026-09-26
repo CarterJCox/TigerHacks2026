@@ -131,9 +131,6 @@ export default function RepChart({ analysis, selectedRep, onRep }) {
             <g>
               <rect x={PAD.left} width={innerW} y={y(bandHi)} height={Math.max(1, y(bandLo) - y(bandHi))} className="baseline-band" />
               <line x1={PAD.left} x2={PAD.left + innerW} y1={y(stat.mean)} y2={y(stat.mean)} className="baseline-line" />
-              <text x={PAD.left + innerW} y={y(bandHi) - 6} className="band-label" textAnchor="end">
-                Baseline average {fmt(stat.mean, def)} · shaded: baseline range plus allowed drift
-              </text>
             </g>
           )}
 
@@ -229,7 +226,11 @@ export default function RepChart({ analysis, selectedRep, onRep }) {
           ))}
         </svg>
         {tip && (
-          <div className="chart-tip" style={{ left: Math.min(Math.max(cx(hover), 70), width - 70), top: 4 }}>
+          // Sit beside the hovered column, never on top of the marks it describes.
+          <div
+            className="chart-tip chart-tip-side"
+            style={cx(hover) > width / 2 ? { right: width - (cx(hover) - band / 2) + 6, top: PAD.top } : { left: cx(hover) + band / 2 + 6, top: PAD.top }}
+          >
             <strong>{tip.value}</strong>
             <span>{tip.title}</span>
             <span className="muted">{tip.sub}</span>
@@ -246,14 +247,24 @@ export default function RepChart({ analysis, selectedRep, onRep }) {
                   {STATUS[s].label}
                 </span>
               ))
-          : ['ok', 'notable', 'major']
-              .filter((l) => reps.some((r) => r.deviations[mode]?.level === l))
-              .map((l) => (
-                <span key={l}>
-                  <i className="round" style={{ background: LEVEL_COLOR[l] }} />
-                  {LEVEL_LABEL[l]}
-                </span>
-              ))}
+          : [
+              ...['ok', 'notable', 'major']
+                .filter((l) => reps.some((r) => r.deviations[mode]?.level === l))
+                .map((l) => (
+                  <span key={l}>
+                    <i className="round" style={{ background: LEVEL_COLOR[l] }} />
+                    {LEVEL_LABEL[l]}
+                  </span>
+                )),
+              <span key="avg">
+                <i className="line" />
+                Baseline average {fmt(stat.mean, def)}
+              </span>,
+              <span key="band">
+                <i className="band" />
+                Baseline range plus allowed drift
+              </span>,
+            ]}
       </div>
     </div>
   );

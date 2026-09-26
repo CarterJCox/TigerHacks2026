@@ -1746,6 +1746,21 @@ legend.panel-title + * {
   border-radius: 50%;
 }
 
+.chart-legend i.line {
+  height: 2px;
+  width: 14px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.chart-legend i.band {
+  background: rgba(167, 151, 255, 0.18);
+}
+
+.chart-tip-side {
+  transform: none;
+}
+
 /* tables */
 
 .table-wrap {
@@ -1931,10 +1946,10 @@ td.lvl-major .cell-delta {
 }
 
 .risk-evidence {
-  font-size: 14px;
-  font-family: var(--font-mono);
+  font-size: 14.5px;
   color: var(--text);
   line-height: 1.5;
+  font-variant-numeric: tabular-nums;
 }
 
 .evidence-label {

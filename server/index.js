@@ -2,6 +2,7 @@
 // Usage: npm run build && npm start
 
 import { createServer } from 'node:http';
+import { existsSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +16,10 @@ try {
 }
 
 const dist = join(root, 'dist');
+if (!existsSync(join(dist, 'index.html'))) {
+  console.error('No build found in dist/. Run `npm run build` first (or use `npm run dev`).');
+  process.exit(1);
+}
 const port = Number(process.env.PORT) || 8787;
 const api = createReportHandler(process.env);
 
