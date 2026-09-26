@@ -41,6 +41,16 @@ npm test
 
 Covers rep detection, metrics, the breakdown point, quality gates (wrong angle, missing person, cuts, zoom), template wording, the LLM safety checks, the report endpoint against a mock Anthropic API, and the MP4/MOV rotation probe.
 
+## Using it
+
+- **Try a sample** on the first screen runs the full analysis on a bundled clip (`public/demo/seated-row.mp4`, a side-view seated row with a resistance band from Pexels). Sample runs are not saved to history. To use your own demo clip, replace the file and update `src/config/sample.js`.
+- **Trim** appears after you upload. Drag the start and end handles to cut dead time; only the kept range is analyzed. Videos up to 10 minutes can be loaded; the analyzed range must be 3 minutes or less.
+- **Results playback**: speeds 1×, 0.5× and 0.25×, a Loop rep toggle, and a Skeleton toggle, shared by the main player and the side-by-side view. <kbd>Space</kbd> plays or pauses; <kbd>←</kbd>/<kbd>→</kbd> jump to the previous or next rep (ignored while typing in a field).
+- **Baseline vs. breakdown**: your most typical baseline rep next to the breakdown rep (or the last rep if nothing broke down), started together, with the metrics that differ most.
+- **Hover a metric** (table column, chart tab, rep detail, risk factor, comparison label) to highlight the joints it measures on the video.
+- **Copy report** puts a plain-text summary on the clipboard; **Download image** saves a PNG of the headline, per-rep chart and key numbers.
+- The last exercise and the last weight used for each exercise are remembered in this browser.
+
 ## How it works
 
 1. **Upload.** The file is opened with the browser's own decoder. If that fails or produces blank frames (commonly iPhone HEVC or ProRes in browsers without support), it is converted in the tab with ffmpeg.wasm. Rotation metadata is read from the MP4/MOV track header and applied if the browser didn't already. A Rotate button covers anything else.

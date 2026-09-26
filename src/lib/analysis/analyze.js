@@ -2,11 +2,13 @@
 //   keypoints -> smoothing -> quality gates -> rep detection ->
 //   per-rep metrics -> baseline comparison -> breakdown point.
 
-import { getExercise } from '../../config/exercises/index.js';
+import { EXERCISES, getExercise } from '../../config/exercises/index.js';
 import { MEASURES } from './measure/index.js';
 import { smoothTrack } from './smooth.js';
 import { buildContext } from './context.js';
-import { assessQuality, repConfidence } from './quality.js';
+import { assessQuality, repConfidence, worstLandmarkInRep } from './quality.js';
+import { jointName } from './messages.js';
+import { listReps } from '../report/format.js';
 import { detectReps, phaseTimes } from './reps.js';
 import { scoreSet } from './scoring.js';
 
@@ -14,6 +16,31 @@ function round(v, d = 2) {
   if (!Number.isFinite(v)) return null;
   const f = 10 ** d;
   return Math.round(v * f) / f;
+}
+
+// How each exercise's rep signal is described in "no reps" messages.
+const MOTION_WORDS = {
+  curl: { verb: 'Your elbow bent', unit: '°', part: 'arm' },
+  row: { verb: 'Your elbow bent', unit: '°', part: 'arm' },
+  squat: { verb: 'Your knees bent', unit: '°', part: 'leg' },
+  press: { verb: 'Your wrists rose', unit: '% of your torso length', part: 'arm' },
+};
+
+/**
+ * When the chosen exercise finds no reps, check whether the same footage
+ * shows clear reps of a different exercise filmed from the same kind of view.
+ */
+function otherExerciseMatch(track, sm, exerciseId) {
+  const chosen = getExercise(exerciseId);
+  let best = null;
+  for (const [id, cfg] of Object.entries(EXERCISES)) {
+    if (id === exerciseId || cfg.view !== chosen.view) continue;
+    const ctx = buildContext(track, cfg);
+    const series = MEASURES[id].series(sm, ctx);
+    const found = detectReps(series.signal, track.times, cfg.reps).reps.filter((r) => !r.truncated).length;
+    if (found >= 2 && (!best || found > best.reps)) best = { id, reps: found };
+  }
+  return best;
 }
 
 export function analyzeTrack(track, exerciseId, { painReported = false } = {}) {
@@ -55,21 +82,49 @@ export function analyzeTrack(track, exerciseId, { painReported = false } = {}) {
   const scorable = reps.filter((r) => r.scorable);
   const issues = [];
   if (!reps.length) {
-    const unit = exerciseId === 'press' ? '% of torso length' : '°';
+    const motion = MOTION_WORDS[exerciseId];
+    const other = otherExerciseMatch(track, sm, exerciseId);
     issues.push({
       code: 'no_reps',
-      title: 'No clear reps were found',
-      message: `The main joint moved through at most ${Math.round(detection.range)}${unit === '°' ? '°' : ' ' + unit} in this clip; a rep needs at least ${cfg.reps.minAbsProminence}${unit === '°' ? '°' : ' ' + unit}. Check that you picked the right exercise and that the working arm or leg is the one nearest the camera.`,
+      title: other ? `This looks like a ${EXERCISES[other.id].shortName.toLowerCase()}, not a ${cfg.shortName.toLowerCase()}` : 'No clear reps were found',
+      message: `${motion.verb} through at most ${Math.round(detection.range)}${motion.unit} in this clip, and a ${cfg.shortName.toLowerCase()} rep needs at least ${cfg.reps.minAbsProminence}${motion.unit}.${
+        other ? ` The movement does match ${other.reps} reps of a ${EXERCISES[other.id].shortName.toLowerCase()}.` : ''
+      }`,
+      fix: other
+        ? `Pick ${EXERCISES[other.id].name} and analyze the video again.`
+        : `Check that you picked the right exercise, that the ${motion.part} you're working is the one nearest the camera, and that the clip includes the reps rather than only the setup.`,
+      suggestExercise: other?.id ?? null,
     });
   } else if (scorable.length < cfg.reps.minReps) {
-    const lowConf = reps.filter((r) => r.lowConfidence).length;
-    issues.push({
-      code: lowConf ? 'low_conf_reps' : 'too_few_reps',
-      title: lowConf ? 'Tracking was too unclear during the reps' : 'Not enough reps to compare',
-      message: lowConf
-        ? `Found ${reps.length} rep${reps.length === 1 ? '' : 's'}, but ${lowConf} had the measured joints out of view or unclear for over ${Math.round((1 - cfg.pose.minRepConfidence) * 100)}% of the rep. Film with the working side closer to the camera and nothing in between.`
-        : `Found ${scorable.length} complete rep${scorable.length === 1 ? '' : 's'}. Spotter needs at least ${cfg.reps.minReps} to compare later reps against your first ones.`,
-    });
+    const unclear = reps.filter((r) => r.lowConfidence);
+    const cut = reps.filter((r) => r.truncated && !r.lowConfidence);
+    if (unclear.length) {
+      // Name the joint that was lost most often during the unclear reps.
+      const counts = {};
+      for (const r of unclear) {
+        const j = worstLandmarkInRep(sm, required, r.startIdx, r.endIdx);
+        if (j !== null) counts[j] = (counts[j] || 0) + 1;
+      }
+      const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+      const joint = top ? jointName(Number(top[0]), { withSide: ctx.view === 'side' }) : 'measured joints';
+      issues.push({
+        code: 'low_conf_reps',
+        title: `Your ${joint} was hard to track during the reps`,
+        message: `Spotter found ${reps.length} rep${reps.length === 1 ? '' : 's'}, but on ${listReps(unclear.map((r) => r.index))} your ${joint} was out of view or unclear for more than ${Math.round((1 - cfg.pose.minRepConfidence) * 100)}% of the rep, so ${unclear.length === 1 ? 'it' : 'they'} can't be scored. That leaves ${scorable.length} usable rep${scorable.length === 1 ? '' : 's'}, and at least ${cfg.reps.minReps} are needed.`,
+        fix: `Film with your ${joint} on the side nearest the camera, with nothing between it and the lens, and keep it inside the frame at both ends of each rep.`,
+      });
+    } else {
+      issues.push({
+        code: 'too_few_reps',
+        title: 'Not enough reps to compare',
+        message: `Spotter found ${scorable.length} complete rep${scorable.length === 1 ? '' : 's'}${
+          cut.length ? ` (${listReps(cut.map((r) => r.index))} ${cut.length === 1 ? 'was' : 'were'} cut off by the start or end of the clip)` : ''
+        }. At least ${cfg.reps.minReps} are needed to compare later reps against your first ones.`,
+        fix: cut.length
+          ? 'Start recording before the first rep and stop after the last one. If you trimmed the video, widen the trim so every rep is complete.'
+          : 'Record a full set of at least 3 reps in one clip.',
+      });
+    }
   }
   if (issues.length) {
     return { ...base, status: 'rejected', issues, sm, series, reps, detection: { range: detection.range } };

@@ -184,3 +184,42 @@ describe('press analysis', () => {
   });
 });
 
+
+describe('failure messages', () => {
+  it('says to film from the side and why', () => {
+    const tl = timeline([{ dur: 8, from: { wl: 0, wr: 0 }, to: { wl: 0, wr: 0 } }]);
+    const issue = analyzeTrack(frontTrack(tl), 'curl').issues.find((i) => i.code === 'wrong_angle');
+    expect(issue.title).toBe('Film from the side for this exercise');
+    expect(issue.message).toMatch(/looks like it's facing you/);
+    expect(issue.fix).toMatch(/Turn about 90°/);
+  });
+
+  it('names the joint, the frame edge and when it left the frame', () => {
+    const track = sideTrack(curlSet(Array.from({ length: 6 }, () => clean)));
+    const half = Math.floor(track.n * 0.3);
+    for (let i = half; i < track.n; i++) {
+      const b = (i * 33 + 15) * 4; // left wrist
+      track.raw[b + 1] = 1.08;
+      track.raw[b + 3] = 0.1;
+    }
+    const res = analyzeTrack(track, 'curl');
+    const issue = res.issues.find((i) => i.code === 'missing_parts');
+    expect(issue.title).toBe('Your left wrist is out of frame for much of the set');
+    expect(issue.message).toMatch(/off the bottom of the frame/);
+    expect(issue.message).toMatch(/from 0:0\d to the end/);
+    expect(issue.fix).toMatch(/at the bottom of every rep/);
+  });
+
+  it('suggests the exercise the footage actually shows', () => {
+    const stand = { knee: 5, lean: 8 };
+    const bottom = { knee: 100, lean: 30 };
+    const phases = [{ dur: 1, from: stand, to: stand }];
+    for (let k = 0; k < 5; k++) {
+      phases.push({ dur: 1.3, from: stand, to: bottom }, { dur: 1.1, from: bottom, to: stand }, { dur: 0.4, from: stand, to: stand });
+    }
+    const res = analyzeTrack(sideTrack(timeline(phases)), 'curl');
+    expect(res.issues[0].code).toBe('no_reps');
+    expect(res.issues[0].title).toBe('This looks like a squat, not a bicep curl');
+    expect(res.issues[0].fix).toBe('Pick Squat and analyze the video again.');
+  });
+});

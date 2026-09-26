@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { EXERCISES, EXERCISE_ORDER } from '../config/exercises/index.js';
 import { clearHistory, deleteSession, getAllCounts, getHistory, toUnit } from '../lib/history.js';
 import TrendChart from './TrendChart.jsx';
+import EmptyState from './EmptyState.jsx';
 
-export default function HistoryView({ initialExercise }) {
+export default function HistoryView({ initialExercise, onStart }) {
   const [exerciseId, setExerciseId] = useState(initialExercise || 'curl');
   const [version, setVersion] = useState(0);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -15,6 +16,8 @@ export default function HistoryView({ initialExercise }) {
   const unit = [...sessions].reverse().find((s) => !s.bodyweight)?.unit || 'lb';
   const display = sessions.map((s) => ({ ...s, weightDisplay: toUnit(s.weight, s.unit, unit) }));
   const mixedUnits = new Set(sessions.filter((s) => !s.bodyweight).map((s) => s.unit)).size > 1;
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  const others = EXERCISE_ORDER.filter((id) => id !== exerciseId && counts[id] > 0);
 
   return (
     <section className="history">
@@ -43,9 +46,37 @@ export default function HistoryView({ initialExercise }) {
       </div>
 
       {sessions.length === 0 ? (
-        <div className="empty">
-          <p>No {ex.shortName.toLowerCase()} sets saved yet. Sets are saved here automatically after each analysis.</p>
-        </div>
+        total === 0 ? (
+          <EmptyState
+            title="No sets saved yet"
+            action={
+              <button type="button" className="btn btn-primary btn-small" onClick={() => onStart(exerciseId)}>
+                Analyze a set
+              </button>
+            }
+          >
+            Each set you analyze is saved here with its date, weight, reps, breakdown rep and form score, so you can see how weight and form
+            move together over time. Nothing leaves this browser.
+          </EmptyState>
+        ) : (
+          <EmptyState
+            title={`No ${ex.shortName.toLowerCase()} sets yet`}
+            action={
+              <>
+                {others.map((id) => (
+                  <button key={id} type="button" className="btn btn-ghost btn-small" onClick={() => setExerciseId(id)}>
+                    See {EXERCISES[id].shortName.toLowerCase()} ({counts[id]})
+                  </button>
+                ))}
+                <button type="button" className="btn btn-ghost btn-small" onClick={() => onStart(exerciseId)}>
+                  Analyze a {ex.shortName.toLowerCase()} set
+                </button>
+              </>
+            }
+          >
+            Sets you analyze as {ex.name.toLowerCase()} will show up here.
+          </EmptyState>
+        )
       ) : (
         <>
           <div className="chart-card">

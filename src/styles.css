@@ -2666,3 +2666,37 @@ kbd {
 .export-status.is-error {
   color: #ff8d8d;
 }
+
+.issue-fix {
+  margin-top: 10px !important;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--accent-wash);
+  color: var(--text) !important;
+  font-size: 15px;
+  display: grid;
+  gap: 2px;
+}
+
+.issue-fix-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* Drawn surfaces size themselves from their container; never let their
+   pixel width push the page wider (that stops them from re-measuring). */
+.player-canvas,
+.compare-canvas,
+.preview-canvas,
+.chart-body svg,
+.trend svg {
+  max-width: 100%;
+}
+
+.player-canvas,
+.compare-canvas {
+  height: auto !important; /* keep the video's aspect ratio if the width is capped */
+}

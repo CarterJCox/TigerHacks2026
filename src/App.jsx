@@ -11,7 +11,7 @@ import { buildPayload } from './lib/report/payload.js';
 import { fetchLlmReport, fetchReportStatus } from './lib/report/client.js';
 import { saveSession, sessionFromAnalysis } from './lib/history.js';
 import { EXERCISES } from './config/exercises/index.js';
-import { initialInput, rememberInput } from './lib/prefs.js';
+import { initialInput, rememberInput, weightFor } from './lib/prefs.js';
 
 const DEFAULT_INPUT = {
   exerciseId: 'curl',
@@ -186,7 +186,22 @@ export default function App() {
         )}
         {screen === 'analyzing' && <AnalyzingView progress={progress} input={runInput || input} onCancel={cancelAnalysis} />}
         {screen === 'rejected' && result && (
-          <RejectedView analysis={result.analysis} input={result.input} onRetry={() => startOver(true)} />
+          <RejectedView
+            analysis={result.analysis}
+            input={result.input}
+            onRetry={() => startOver(true)}
+            onRetryAs={(exerciseId) => {
+              // Same video, different exercise: no need to upload again.
+              const w = weightFor(exerciseId);
+              const next = {
+                ...result.input,
+                exerciseId,
+                bodyweight: EXERCISES[exerciseId].allowBodyweight && Boolean(w ? w.bodyweight : result.input.bodyweight),
+                ...(w && !w.bodyweight ? { weight: Number(w.weight), unit: w.unit } : {}),
+              };
+              analyze(next, prepared);
+            }}
+          />
         )}
         {screen === 'results' && result?.report && (
           <ResultsView
@@ -199,7 +214,22 @@ export default function App() {
             onHistory={() => showHistory(result.input.exerciseId)}
           />
         )}
-        {screen === 'history' && <HistoryView initialExercise={historyExercise || input.exerciseId} />}
+        {screen === 'history' && (
+          <HistoryView
+            initialExercise={historyExercise || input.exerciseId}
+            onStart={(exerciseId) => {
+              startOver(true);
+              if (exerciseId && EXERCISES[exerciseId]) {
+                const w = weightFor(exerciseId);
+                setInput((i) => ({
+                  ...i,
+                  exerciseId,
+                  ...(w ? { weight: w.weight ?? '', unit: w.unit === 'kg' ? 'kg' : 'lb', bodyweight: EXERCISES[exerciseId].allowBodyweight && Boolean(w.bodyweight) } : {}),
+                }));
+              }
+            }}
+          />
+        )}
       </main>
 
       <footer className="footer">

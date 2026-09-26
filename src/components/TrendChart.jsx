@@ -109,6 +109,7 @@ export default function TrendChart({ sessions, unit }) {
           })}
         </svg>
         {n === 1 && <p className="muted small">One set so far. The trend fills in as you analyze more sets.</p>}
+        {wv.length === 0 && <p className="muted small">Every set here was bodyweight, so only the form score is charted.</p>}
         {hs && (
           <div className="chart-tip" style={{ left: Math.min(Math.max(x(hover), 80), width - 80), top: 0 }}>
             <strong>{hs.bodyweight ? 'Bodyweight' : `${Math.round(hs.weightDisplay * 10) / 10} ${unit}`}</strong>

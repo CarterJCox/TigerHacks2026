@@ -21,7 +21,8 @@ function RepDetail({ analysis, repIndex, onPlay }) {
   if (!rep) {
     return (
       <div className="rep-detail rep-detail-empty">
-        <p className="muted">Select a rep on the timeline, the chart or the table to see what changed compared with your baseline.</p>
+        <p className="empty-title">No rep selected</p>
+        <p className="muted small">Pick a rep on the timeline, the chart or the table, or press the right arrow key, to see what changed compared with your baseline.</p>
       </div>
     );
   }

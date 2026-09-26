@@ -4,45 +4,32 @@
 
 import { LM, NUM_LANDMARKS } from '../pose/landmarks.js';
 import { median } from './geometry.js';
-
-const PART_LABELS = {
-  Shoulder: 'shoulder',
-  Elbow: 'elbow',
-  Wrist: 'wrist',
-  Hip: 'hip',
-  Knee: 'knee',
-  Ankle: 'ankle',
-};
-
-function landmarkName(j) {
-  const name = Object.keys(LM).find((k) => LM[k] === j) || '';
-  const part = name.replace(/^(left|right)/, '');
-  const label = PART_LABELS[part] || part.toLowerCase();
-  return label;
-}
-
-function pct(x) {
-  return Math.round(x * 100);
-}
+import { clock, describeSpans, fixForReason, jointName, missingReason, pct, reasonPhrase, spansWhere } from './messages.js';
 
 /**
  * @returns {{ ok: boolean, issues: Issue[], stats: object }}
- *   Issue = { code, title, message }
+ *   Issue = { code, title, message, fix }
  */
 export function assessQuality(track, sm, cfg, ctx, required) {
   const n = track.n;
   const issues = [];
+  const tStart = track.times[0] ?? 0;
+  const tEnd = track.times[n - 1] ?? 0;
   let poseFrames = 0;
   for (let i = 0; i < n; i++) poseFrames += track.hasPose[i];
   const poseFraction = poseFrames / n;
+  const side = ctx.view === 'side';
 
   const stats = { frames: n, poseFraction, keyFraction: 0, torsoFraction: NaN, shoulderRatio: NaN, weakParts: [] };
 
   if (poseFraction < cfg.pose.minPoseFraction) {
+    const gaps = spansWhere(Array.from(track.hasPose, (h) => !h), track.times);
+    const when = describeSpans(gaps, tStart, tEnd);
     issues.push({
       code: 'no_person',
       title: 'Spotter could not find you in most of the video',
-      message: `A person was detected in ${pct(poseFraction)}% of sampled frames; at least ${pct(cfg.pose.minPoseFraction)}% is needed. Make sure your whole body is in frame, well lit, and not blocked by equipment.`,
+      message: `A person was detected in only ${pct(poseFraction)}% of frames (at least ${pct(cfg.pose.minPoseFraction)}% is needed)${when ? `; nobody was found ${when}` : ''}.`,
+      fix: 'Start recording with your whole body already in frame, light yourself from the front rather than from a window behind you, and keep equipment from blocking the camera.',
     });
     return { ok: false, issues, stats };
   }
@@ -62,22 +49,45 @@ export function assessQuality(track, sm, cfg, ctx, required) {
   const weak = [];
   required.forEach((j, k) => {
     const f = partOk[k] / n;
-    if (f < cfg.pose.minKeyFraction) weak.push({ name: landmarkName(j), fraction: f });
+    if (f < cfg.pose.minKeyFraction) weak.push({ j, name: jointName(j, { withSide: false }), fraction: f });
   });
-  stats.weakParts = weak;
+  stats.weakParts = weak.map(({ name, fraction }) => ({ name, fraction }));
 
   if (stats.keyFraction < cfg.pose.minKeyFraction) {
-    const names = [...new Set(weak.map((w) => w.name))];
-    const which = names.length ? names.join(', ') : 'measured joints';
-    issues.push({
-      code: 'missing_parts',
-      title: 'Key joints were not clearly visible',
-      message: `The ${which} ${names.length === 1 ? 'was' : 'were'} hard to track: all the joints this exercise needs were clearly visible in only ${pct(stats.keyFraction)}% of frames (${pct(cfg.pose.minKeyFraction)}% needed). Keep your whole body in frame, avoid baggy sleeves or equipment blocking the camera, and use even lighting.`,
-    });
+    // The worst joint drives the message; others are listed after it.
+    const worst = [...weak].sort((a, b) => a.fraction - b.fraction)[0] ?? null;
+    if (worst) {
+      const label = jointName(worst.j, { withSide: side });
+      const reason = missingReason(track, sm, worst.j);
+      const missing = Array.from({ length: n }, (_, i) => !sm.ok[worst.j][i]);
+      const when = describeSpans(spansWhere(missing, track.times), tStart, tEnd);
+      const others = [...new Set(weak.filter((w) => w !== worst).map((w) => jointName(w.j, { withSide: false })))].filter((x) => x !== worst.name);
+      issues.push({
+        code: 'missing_parts',
+        title:
+          reason === 'hidden'
+            ? `Your ${label} is hard to see for much of the set`
+            : reason === 'noPerson'
+              ? `Your ${label} is out of view for much of the set`
+              : `Your ${label} is out of frame for much of the set`,
+        message: `Your ${label} was ${reasonPhrase(reason)} in ${pct(1 - worst.fraction)}% of frames${when ? `, mostly ${when}` : ''}.${
+          others.length ? ` Your ${others.join(' and ')} ${others.length === 1 ? 'was' : 'were'} also hard to track.` : ''
+        } All the joints this exercise measures were clear together in only ${pct(stats.keyFraction)}% of frames (${pct(cfg.pose.minKeyFraction)}% needed).`,
+        fix: fixForReason(reason, worst.name),
+      });
+    } else {
+      issues.push({
+        code: 'missing_parts',
+        title: 'The measured joints were rarely all visible at once',
+        message: `Each joint was visible on its own, but all of them were clear together in only ${pct(stats.keyFraction)}% of frames (${pct(cfg.pose.minKeyFraction)}% needed).`,
+        fix: 'Keep your whole body in frame and make sure equipment or your other limbs do not block the side facing the camera.',
+      });
+    }
   }
 
   // Size in frame and camera angle, from the raw (unsmoothed) landmarks.
   const torsoLens = [];
+  const torsoTimes = [];
   const shoulderSpans = [];
   const at = (i, j) => {
     const b = (i * NUM_LANDMARKS + j) * 4;
@@ -92,6 +102,7 @@ export function assessQuality(track, sm, cfg, ctx, required) {
     const sm2 = { x: (ls.x + rs.x) / 2, y: (ls.y + rs.y) / 2 };
     const hm = { x: (lh.x + rh.x) / 2, y: (lh.y + rh.y) / 2 };
     torsoLens.push(Math.hypot(sm2.x - hm.x, sm2.y - hm.y));
+    torsoTimes.push(track.times[i]);
     shoulderSpans.push(Math.abs(ls.x - rs.x));
   }
   const torso = median(torsoLens);
@@ -119,25 +130,34 @@ export function assessQuality(track, sm, cfg, ctx, required) {
   }
   stats.cuts = cuts;
   if (cuts.length) {
-    const at0 = cuts[0];
+    const list = cuts.slice(0, 3).map(clock).join(', ');
     issues.push({
       code: 'camera_cut',
       title: 'The video jumps between shots',
-      message: `Your position jumped further than a body can move in one frame (first at ${Math.floor(at0 / 60)}:${(at0 % 60).toFixed(1).padStart(4, '0')}), which usually means an edited clip or a camera that was moved. Record the whole set in one continuous take with the phone kept still.`,
+      message: `Your position jumps further than a body can move in one frame at ${list}${cuts.length > 3 ? ' and later' : ''}. That usually means an edited clip or a camera that was picked up and moved.`,
+      fix: 'Record the whole set in one continuous take with the phone propped up. If you joined clips together, upload only the one with the set.',
     });
   } else if (stats.torsoSpread > cfg.camera.maxTorsoSpread) {
+    // When did it start? The first moment the size drifts well away from the opening frames.
+    const opening = median(torsoLens.slice(0, Math.max(3, Math.round(track.fps * 1.5))));
+    const driftAt = torsoTimes.find((t, k) => Math.abs(torsoLens[k] / opening - 1) > (cfg.camera.maxTorsoSpread - 1) / 2);
     issues.push({
       code: 'camera_moved',
       title: 'The camera moved or zoomed during the set',
-      message: `Your torso's size in the frame changed by ${Math.round((stats.torsoSpread - 1) * 100)}% during the clip (under ${Math.round((cfg.camera.maxTorsoSpread - 1) * 100)}% is expected with a still camera). Joint angles and distances need a fixed camera: prop the phone up and don't zoom while recording.`,
+      message: `Your size in the frame changed by ${Math.round((stats.torsoSpread - 1) * 100)}% across the clip${
+        Number.isFinite(driftAt) ? (driftAt - tStart < 1.5 ? ' throughout the clip' : `, starting around ${clock(driftAt)}`) : ''
+      } (a still camera stays under ${Math.round((cfg.camera.maxTorsoSpread - 1) * 100)}%). Joint angles and distances can't be compared when the view changes.`,
+      fix: "Prop the phone up before you start, and don't zoom, pan or follow yourself with the camera while recording.",
     });
   }
 
   if (stats.torsoFraction < cfg.pose.minTorsoFraction) {
+    const closer = Math.max(1.5, Math.ceil((cfg.pose.minTorsoFraction / stats.torsoFraction) * 2) / 2);
     issues.push({
       code: 'too_far',
       title: 'You are too small in the frame',
-      message: `Your torso takes up ${pct(stats.torsoFraction)}% of the frame (${pct(cfg.pose.minTorsoFraction)}% needed for reliable joint angles). Move the camera closer or zoom in, keeping your whole body in view.`,
+      message: `Your torso takes up ${pct(stats.torsoFraction)}% of the frame (at least ${pct(cfg.pose.minTorsoFraction)}% is needed for reliable joint angles).`,
+      fix: `Move the camera about ${closer}× closer, or zoom in before you start recording, while keeping your whole body in view.`,
     });
   }
 
@@ -145,15 +165,17 @@ export function assessQuality(track, sm, cfg, ctx, required) {
   if (cfg.view === 'side' && Number.isFinite(ratio) && ratio > cfg.viewCheck.maxShoulderRatio) {
     issues.push({
       code: 'wrong_angle',
-      title: 'This looks like it was filmed from the front or at an angle',
-      message: `The ${cfg.shortName.toLowerCase()} needs a side view. Your shoulders appear ${ratio.toFixed(2)}× your torso length apart; side-on they overlap (under ${cfg.viewCheck.maxShoulderRatio.toFixed(2)}×). Turn so your shoulder points at the camera.`,
+      title: 'Film from the side for this exercise',
+      message: `The camera looks like it's facing you: your shoulders appear ${ratio.toFixed(2)}× your torso length apart, but side-on they overlap (under ${cfg.viewCheck.maxShoulderRatio.toFixed(2)}×). The ${cfg.shortName.toLowerCase()} is measured from the side.`,
+      fix: 'Turn about 90° so one shoulder points straight at the camera, with the arm or leg you want measured on the camera side.',
     });
   }
   if (cfg.view === 'front' && Number.isFinite(ratio) && ratio < cfg.viewCheck.minShoulderRatio) {
     issues.push({
       code: 'wrong_angle',
-      title: 'This looks like it was filmed from the side',
-      message: `The ${cfg.shortName.toLowerCase()} needs a front view so both arms can be compared. Your shoulders appear only ${ratio.toFixed(2)}× your torso length apart (at least ${cfg.viewCheck.minShoulderRatio.toFixed(2)}× when facing the camera). Face the camera squarely.`,
+      title: 'Film from the front for this exercise',
+      message: `The camera looks like it's at your side: your shoulders appear only ${ratio.toFixed(2)}× your torso length apart, and facing the camera they're at least ${cfg.viewCheck.minShoulderRatio.toFixed(2)}×. The ${cfg.shortName.toLowerCase()} compares your left and right arms, so both need to be visible.`,
+      fix: 'Face the camera squarely so both shoulders, elbows and wrists are in view.',
     });
   }
 
@@ -167,4 +189,15 @@ export function repConfidence(sm, required, a, b) {
     if (required.every((j) => sm.ok[j][i])) good++;
   }
   return good / Math.max(1, b - a + 1);
+}
+
+/** The required landmark that was missing most often within a rep. */
+export function worstLandmarkInRep(sm, required, a, b) {
+  let worst = null;
+  for (const j of required) {
+    let miss = 0;
+    for (let i = a; i <= b; i++) if (!sm.ok[j][i]) miss++;
+    if (!worst || miss > worst.miss) worst = { j, miss };
+  }
+  return worst?.miss ? worst.j : null;
 }
