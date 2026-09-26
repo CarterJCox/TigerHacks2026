@@ -61,6 +61,7 @@ export default {
     rom: {
       label: 'Depth (knee bend)',
       short: 'Depth',
+      body: ['Hip', 'Knee', 'Ankle'],
       unit: '°',
       decimals: 0,
       direction: 'decrease',
@@ -76,6 +77,7 @@ export default {
     forwardLean: {
       label: 'Forward lean at the bottom',
       short: 'Lean',
+      body: ['Shoulder', 'Hip'],
       unit: '°',
       decimals: 0,
       direction: 'increase',
@@ -91,6 +93,7 @@ export default {
     hipsRiseFirst: {
       label: 'Hips rising first',
       short: 'Hips first',
+      body: ['Shoulder', 'Hip', 'Knee'],
       unit: '°',
       decimals: 0,
       direction: 'increase',
@@ -106,6 +109,7 @@ export default {
     heelLift: {
       label: 'Heel lift',
       short: 'Heel lift',
+      body: ['Ankle', 'Heel', 'Foot'],
       unit: '% foot',
       decimals: 0,
       direction: 'increase',
@@ -121,6 +125,7 @@ export default {
     lowerTime: {
       label: 'Descent time',
       short: 'Descent',
+      body: ['Hip', 'Knee', 'Ankle'],
       unit: 's',
       decimals: 2,
       direction: 'decrease',
@@ -136,6 +141,7 @@ export default {
     liftTime: {
       label: 'Ascent time',
       short: 'Ascent',
+      body: ['Hip', 'Knee', 'Ankle'],
       unit: 's',
       decimals: 2,
       direction: 'increase',

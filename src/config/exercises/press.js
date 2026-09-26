@@ -67,6 +67,7 @@ export default {
     rom: {
       label: 'Pressing range',
       short: 'Range',
+      body: ['Shoulder', 'Elbow', 'Wrist'],
       unit: '% torso',
       decimals: 0,
       direction: 'decrease',
@@ -82,6 +83,7 @@ export default {
     heightAsym: {
       label: 'Left/right height gap at the top',
       short: 'Height gap',
+      body: ['Elbow', 'Wrist'],
       unit: '% torso',
       decimals: 0,
       direction: 'increase',
@@ -97,6 +99,7 @@ export default {
     elbowAsym: {
       label: 'Left/right lockout gap',
       short: 'Lockout gap',
+      body: ['Shoulder', 'Elbow', 'Wrist'],
       unit: '°',
       decimals: 0,
       direction: 'increase',
@@ -112,6 +115,7 @@ export default {
     lateralLean: {
       label: 'Side lean',
       short: 'Side lean',
+      body: ['Shoulder', 'Hip'],
       unit: '°',
       decimals: 0,
       direction: 'increase',
@@ -127,6 +131,7 @@ export default {
     legDrive: {
       label: 'Leg drive',
       short: 'Leg drive',
+      body: ['Hip', 'Knee', 'Ankle'],
       unit: '% torso',
       decimals: 0,
       direction: 'increase',
@@ -142,6 +147,7 @@ export default {
     lowerTime: {
       label: 'Lowering time',
       short: 'Lowering',
+      body: ['Shoulder', 'Elbow', 'Wrist'],
       unit: 's',
       decimals: 2,
       direction: 'decrease',
@@ -157,6 +163,7 @@ export default {
     liftTime: {
       label: 'Pressing time',
       short: 'Pressing',
+      body: ['Shoulder', 'Elbow', 'Wrist'],
       unit: 's',
       decimals: 2,
       direction: 'increase',

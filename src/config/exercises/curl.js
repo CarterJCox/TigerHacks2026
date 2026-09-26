@@ -15,6 +15,7 @@
 //                    direction are reported but never penalized.
 //   weight:          how much this metric pulls down the 0-100 rep score.
 //   maxStatus:       'yellow' means this metric alone can never mark a rep red.
+//   body:            joints highlighted on the video when the metric is hovered.
 
 export default {
   id: 'curl',
@@ -93,6 +94,7 @@ export default {
     rom: {
       label: 'Elbow range of motion',
       short: 'Range',
+      body: ['Shoulder', 'Elbow', 'Wrist'],
       unit: '°',
       decimals: 0,
       direction: 'decrease',
@@ -108,6 +110,7 @@ export default {
     elbowDrift: {
       label: 'Upper-arm swing',
       short: 'Elbow drift',
+      body: ['Shoulder', 'Elbow'],
       unit: '°',
       decimals: 0,
       direction: 'increase',
@@ -123,6 +126,7 @@ export default {
     torsoSwing: {
       label: 'Torso swing',
       short: 'Torso swing',
+      body: ['Shoulder', 'Hip'],
       unit: '°',
       decimals: 0,
       direction: 'increase',
@@ -138,6 +142,7 @@ export default {
     lowerTime: {
       label: 'Lowering time',
       short: 'Lowering',
+      body: ['Shoulder', 'Elbow', 'Wrist'],
       unit: 's',
       decimals: 2,
       direction: 'decrease',
@@ -153,6 +158,7 @@ export default {
     liftTime: {
       label: 'Lifting time',
       short: 'Lifting',
+      body: ['Shoulder', 'Elbow', 'Wrist'],
       unit: 's',
       decimals: 2,
       direction: 'increase',

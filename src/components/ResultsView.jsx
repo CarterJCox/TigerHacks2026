@@ -3,7 +3,11 @@ import { getExercise } from '../config/exercises/index.js';
 import VideoPlayer from './VideoPlayer.jsx';
 import RepChart from './RepChart.jsx';
 import RepTable from './RepTable.jsx';
+import CompareView, { comparisonPair } from './CompareView.jsx';
+import EmptyState from './EmptyState.jsx';
 import { STATUS } from './status.js';
+import { HighlightContext, useMetricHover } from './highlight.js';
+import { highlightFor } from './overlay.js';
 import { changePhrase, fmt, fmtDelta, fmtLong, fmtRange, listReps } from '../lib/report/format.js';
 import { painNotice } from '../lib/report/template.js';
 
@@ -11,6 +15,7 @@ const LEVEL_WORD = { notable: 'Notable', major: 'Major' };
 
 function RepDetail({ analysis, repIndex, onPlay }) {
   const cfg = getExercise(analysis.exerciseId);
+  const hover = useMetricHover();
   const rep = analysis.reps.find((r) => r.index === repIndex);
   if (!rep) {
     return (
@@ -50,7 +55,7 @@ function RepDetail({ analysis, repIndex, onPlay }) {
           {changed.map(([key, d]) => {
             const def = cfg.metrics[key];
             return (
-              <li key={key} className={`lvl-${d.level}`}>
+              <li key={key} className={`lvl-${d.level}`} tabIndex={0} {...hover(key)}>
                 <span className="change-level">{LEVEL_WORD[d.level]}</span>
                 <span className="change-text">
                   <strong>{def.label}</strong>: {fmtRange(d.base, d.value, def)} ({fmtDelta(d, def)})
@@ -84,8 +89,13 @@ function RepDetail({ analysis, repIndex, onPlay }) {
 
 function RiskList({ analysis, onRep }) {
   const cfg = getExercise(analysis.exerciseId);
+  const hover = useMetricHover();
   if (!analysis.risks.length) {
-    return <p className="muted">No risk patterns crossed their thresholds in this set.</p>;
+    return (
+      <EmptyState compact title="No risk patterns in this set">
+        None of the measured patterns linked to extra strain moved past its threshold compared with your baseline reps.
+      </EmptyState>
+    );
   }
   return (
     <ul className="risk-list">
@@ -93,7 +103,7 @@ function RiskList({ analysis, onRep }) {
         const def = cfg.metrics[r.metric];
         const others = r.reps.filter((i) => i !== r.firstRep);
         return (
-          <li key={r.id} className={`risk lvl-${r.worst.level}`}>
+          <li key={r.id} className={`risk lvl-${r.worst.level}`} {...hover(r.metric)}>
             <div className="risk-head">
               <h3>{r.title}</h3>
               <button type="button" className="chip" onClick={() => onRep(r.firstRep)}>
@@ -122,6 +132,13 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
   const cfg = getExercise(analysis.exerciseId);
   const playerRef = useRef(null);
   const [selectedRep, setSelectedRep] = useState(analysis.breakdown?.rep ?? null);
+  // Playback settings shared by the main player and the side-by-side.
+  const [rate, setRate] = useState(1);
+  const [showSkeleton, setShowSkeleton] = useState(true);
+  const [loop, setLoop] = useState(false);
+  const [highlightMetric, setHighlightMetric] = useState(null);
+  const highlight = useMemo(() => highlightFor(analysis, highlightMetric), [analysis, highlightMetric]);
+  const pair = useMemo(() => comparisonPair(analysis), [analysis]);
   const playRep = useCallback((index) => {
     setSelectedRep(index);
     playerRef.current?.playRep(index);
@@ -130,7 +147,7 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
   }, []);
 
   const scorable = analysis.reps.filter((r) => r.scorable);
-  const weightText = input.bodyweight ? 'Bodyweight' : `${input.weight} ${input.unit}`;
+  const weightText = input.weightLabel || (input.bodyweight ? 'Bodyweight' : `${input.weight} ${input.unit}`);
   const date = useMemo(() => new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }), []);
   const causesLine = analysis.breakdown?.causes
     ?.slice(0, 3)
@@ -138,11 +155,13 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
     .join('; ');
 
   return (
+    <HighlightContext.Provider value={setHighlightMetric}>
     <article className="results">
       <header className="results-head">
         <div className="results-meta">
           <p className="eyebrow">
             {cfg.name} · {weightText} · {date}
+            {input.sample && <span className="tag tag-sample">Sample video</span>}
           </p>
           <h1 className={`headline ${llmPending ? '' : 'is-final'}`} key={report.headline}>
             {report.headline}
@@ -201,7 +220,21 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
 
       <section className="results-grid">
         <div className="results-video">
-          <VideoPlayer ref={playerRef} src={prepared?.url} rotation={prepared?.rotation || 0} analysis={analysis} selectedRep={selectedRep} onSelectRep={setSelectedRep} />
+          <VideoPlayer
+            ref={playerRef}
+            src={prepared?.url}
+            rotation={prepared?.rotation || 0}
+            analysis={analysis}
+            selectedRep={selectedRep}
+            onSelectRep={setSelectedRep}
+            rate={rate}
+            onRate={setRate}
+            showSkeleton={showSkeleton}
+            onToggleSkeleton={() => setShowSkeleton((s) => !s)}
+            loop={loop}
+            onToggleLoop={() => setLoop((l) => !l)}
+            highlight={highlight}
+          />
         </div>
         <aside className="results-side">
           <RepDetail analysis={analysis} repIndex={selectedRep} onPlay={playRep} />
@@ -213,6 +246,29 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
             </div>
           )}
         </aside>
+      </section>
+
+      <section className="section" aria-labelledby="compare-title">
+        <div className="section-head">
+          <h2 id="compare-title">
+            {pair ? `Baseline rep ${pair.baseline.index} vs. ${pair.kind === 'breakdown' ? 'breakdown' : 'last'} rep ${pair.other.index}` : 'Baseline vs. later reps'}
+          </h2>
+          <p className="muted">
+            {pair?.kind === 'last'
+              ? 'No breakdown point was found, so your most typical baseline rep is shown next to your last rep. Both start together from the beginning of each rep.'
+              : 'Your most typical baseline rep next to the rep where form changed. Both start together from the beginning of each rep.'}
+          </p>
+        </div>
+        <CompareView
+          analysis={analysis}
+          src={prepared?.url}
+          rotation={prepared?.rotation || 0}
+          rate={rate}
+          onRate={setRate}
+          showSkeleton={showSkeleton}
+          onToggleSkeleton={() => setShowSkeleton((s) => !s)}
+          highlight={highlight}
+        />
       </section>
 
       <section className="section">
@@ -290,7 +346,7 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
             <h3>What each number means</h3>
             <ul className="metric-notes">
               {Object.entries(cfg.metrics).map(([k, def]) => (
-                <li key={k}>
+                <MetricNote key={k} metricKey={k}>
                   <strong>{def.label}</strong> <span className={`rel rel-${def.reliability}`}>{def.reliability} reliability</span>
                   <br />
                   <span className="muted">{def.description}</span>{' '}
@@ -299,7 +355,7 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
                     {def.mode === 'relative' ? `${Math.round(def.notable * 100)}% of the baseline average` : fmtLong(def.notable, def)} beyond your baseline
                     range (major at {def.mode === 'relative' ? `${Math.round(def.major * 100)}%` : fmtLong(def.major, def)}).
                   </span>
-                </li>
+                </MetricNote>
               ))}
             </ul>
             <h3>Limits of a 2-D video</h3>
@@ -328,5 +384,11 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
         Spotter measures movement from video. It is not medical advice and cannot diagnose injuries.
       </p>
     </article>
+    </HighlightContext.Provider>
   );
+}
+
+function MetricNote({ metricKey, children }) {
+  const hover = useMetricHover();
+  return <li {...hover(metricKey)}>{children}</li>;
 }

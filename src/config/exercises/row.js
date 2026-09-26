@@ -61,6 +61,7 @@ export default {
     rom: {
       label: 'Elbow range of motion',
       short: 'Range',
+      body: ['Shoulder', 'Elbow', 'Wrist'],
       unit: '°',
       decimals: 0,
       direction: 'decrease',
@@ -76,6 +77,7 @@ export default {
     torsoSwing: {
       label: 'Torso rocking',
       short: 'Torso rock',
+      body: ['Shoulder', 'Hip'],
       unit: '°',
       decimals: 0,
       direction: 'increase',
@@ -91,6 +93,7 @@ export default {
     leanBack: {
       label: 'Lean-back at the finish',
       short: 'Lean back',
+      body: ['Shoulder', 'Hip'],
       unit: '°',
       decimals: 0,
       direction: 'increase',
@@ -106,6 +109,7 @@ export default {
     shrug: {
       label: 'Shoulder shrug',
       short: 'Shrug',
+      body: ['Ear', 'Shoulder'],
       unit: '% torso',
       decimals: 0,
       direction: 'increase',
@@ -121,6 +125,7 @@ export default {
     lowerTime: {
       label: 'Return time',
       short: 'Return',
+      body: ['Shoulder', 'Elbow', 'Wrist'],
       unit: 's',
       decimals: 2,
       direction: 'decrease',
@@ -136,6 +141,7 @@ export default {
     liftTime: {
       label: 'Pulling time',
       short: 'Pulling',
+      body: ['Shoulder', 'Elbow', 'Wrist'],
       unit: 's',
       decimals: 2,
       direction: 'increase',

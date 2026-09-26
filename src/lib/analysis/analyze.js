@@ -30,6 +30,7 @@ export function analyzeTrack(track, exerciseId, { painReported = false } = {}) {
     ctx,
     quality: quality.stats,
     fps: track.fps,
+    t0: track.t0 || 0, // start of the analyzed range in the video (non-zero when trimmed)
     duration: track.duration,
     width: track.width,
     height: track.height,

@@ -1,148 +1,54 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { drawVideoFrame } from '../lib/video/frame.js';
-import { LM, SKELETON, BODY_POINTS } from '../lib/pose/landmarks.js';
-import { getExercise } from '../config/exercises/index.js';
 import Timeline from './Timeline.jsx';
+import PlaybackControls from './PlaybackControls.jsx';
 import { STATUS, fmtClock, repAt } from './status.js';
+import { drawSkeleton, fitCanvas, overlayColors } from './overlay.js';
 
-function cssVar(name, fallback) {
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return v || fallback;
+const LEAD_IN = 0.2; // seconds shown before a rep starts
+const LEAD_OUT = 0.25; // and after it ends
+
+export function isTypingTarget(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
 }
 
-// Interpolated landmark position at time t (analysis pixel coordinates).
-function pointAtTime(sm, j, fi) {
-  const i0 = Math.max(0, Math.min(sm.n - 1, Math.floor(fi)));
-  const i1 = Math.min(sm.n - 1, i0 + 1);
-  const f = fi - i0;
-  const ok0 = sm.ok[j][i0] && Number.isFinite(sm.x[j][i0]);
-  const ok1 = sm.ok[j][i1] && Number.isFinite(sm.x[j][i1]);
-  if (ok0 && ok1) return { x: sm.x[j][i0] * (1 - f) + sm.x[j][i1] * f, y: sm.y[j][i0] * (1 - f) + sm.y[j][i1] * f };
-  if (ok0 && f < 0.5) return { x: sm.x[j][i0], y: sm.y[j][i0] };
-  if (ok1 && f >= 0.5) return { x: sm.x[j][i1], y: sm.y[j][i1] };
-  return null;
+function isInteractive(el) {
+  return Boolean(el?.closest?.('button, a, summary, [role="button"], [role="tab"], [role="slider"], [role="radio"]'));
 }
 
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
-function drawSkeleton(ctx, analysis, t, scale, dpr, colors, statusColor) {
-  const { sm, ctx: body, series } = analysis;
-  const cfg = getExercise(analysis.exerciseId);
-  const fi = t * analysis.fps;
-  const pts = {};
-  for (const j of [...BODY_POINTS, LM.nose]) {
-    const p = pointAtTime(sm, j, fi);
-    if (p) pts[j] = { x: p.x * scale, y: p.y * scale };
-  }
-  const nearSide = body.view === 'side' ? body.side : null;
-  const isNear = (j) => {
-    if (!nearSide) return true;
-    const name = Object.keys(LM).find((k) => LM[k] === j) || '';
-    return name.startsWith(nearSide);
-  };
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  // Far side first, dimmer, so the measured side sits on top.
-  for (const pass of ['far', 'near']) {
-    for (const [a, b] of SKELETON) {
-      const near = isNear(a) && isNear(b);
-      if ((pass === 'near') !== near) continue;
-      const pa = pts[a];
-      const pb = pts[b];
-      if (!pa || !pb) continue;
-      ctx.strokeStyle = 'rgba(8,9,12,0.55)';
-      ctx.lineWidth = (near ? 6 : 4) * dpr;
-      ctx.beginPath();
-      ctx.moveTo(pa.x, pa.y);
-      ctx.lineTo(pb.x, pb.y);
-      ctx.stroke();
-      ctx.strokeStyle = near ? statusColor : colors.far;
-      ctx.lineWidth = (near ? 3 : 2) * dpr;
-      ctx.beginPath();
-      ctx.moveTo(pa.x, pa.y);
-      ctx.lineTo(pb.x, pb.y);
-      ctx.stroke();
-    }
-  }
-  for (const [j, p] of Object.entries(pts)) {
-    const near = isNear(Number(j));
-    ctx.fillStyle = 'rgba(8,9,12,0.8)';
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, (near ? 5 : 3.5) * dpr, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = near ? statusColor : colors.far;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, (near ? 3 : 2) * dpr, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Key joint readout, e.g. "Elbow 47°".
-  const joints =
-    body.view === 'side'
-      ? [LM[`${body.side}${cfg.overlay.joint === 'knee' ? 'Knee' : 'Elbow'}`]]
-      : [LM.leftElbow, LM.rightElbow];
-  const values = series[cfg.overlay.series];
-  const idx = Math.max(0, Math.min(sm.n - 1, Math.round(fi)));
-  const value = values ? values[idx] : NaN;
-  const anchor = joints.map((j) => pts[j]).find(Boolean);
-  for (const j of joints) {
-    const p = pts[j];
-    if (!p) continue;
-    ctx.strokeStyle = colors.accent;
-    ctx.lineWidth = 2 * dpr;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 10 * dpr, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  if (anchor && Number.isFinite(value)) {
-    const text = `${cfg.overlay.label} ${Math.round(value)}°`;
-    ctx.font = `600 ${12.5 * dpr}px "Instrument Sans Variable", system-ui, sans-serif`;
-    const w = ctx.measureText(text).width + 16 * dpr;
-    const h = 24 * dpr;
-    let x = anchor.x + 16 * dpr;
-    let y = anchor.y - h - 8 * dpr;
-    x = Math.min(Math.max(4 * dpr, x), ctx.canvas.width - w - 4 * dpr);
-    y = Math.min(Math.max(4 * dpr, y), ctx.canvas.height - h - 4 * dpr);
-    ctx.fillStyle = 'rgba(12,13,16,0.82)';
-    roundRect(ctx, x, y, w, h, 7 * dpr);
-    ctx.fill();
-    ctx.fillStyle = '#f4f5f7';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, x + 8 * dpr, y + h / 2 + 0.5 * dpr);
-  }
-}
-
-const VideoPlayer = forwardRef(function VideoPlayer({ src, rotation, analysis, selectedRep, onSelectRep }, ref) {
+const VideoPlayer = forwardRef(function VideoPlayer(
+  { src, rotation, analysis, selectedRep, onSelectRep, rate, onRate, showSkeleton, onToggleSkeleton, loop, onToggleLoop, highlight, keyboard = true },
+  ref,
+) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
-  const stopAtRef = useRef(null);
+  const windowRef = useRef(null); // { start, end } of the rep being played, if any
+  const loopRef = useRef(loop);
+  const resumeRef = useRef(false); // resume playback after a loop jumps back
   const dirtyRef = useRef(true);
-  const colorsRef = useRef(null);
   const readyRef = useRef(false);
-  const [time, setTime] = useState(0);
+  const [time, setTime] = useState(analysis.t0 || 0);
   const [playing, setPlaying] = useState(false);
-  const [rate, setRate] = useState(1);
-  const [showSkeleton, setShowSkeleton] = useState(true);
   const [ready, setReady] = useState(false);
   const reps = analysis.reps;
-  const duration = analysis.duration;
+  const t0 = analysis.t0 || 0;
+  const tEnd = t0 + analysis.duration;
 
-  const seek = useCallback((t) => {
-    const v = videoRef.current;
-    if (!v) return;
-    stopAtRef.current = null;
-    v.currentTime = Math.max(0, Math.min(duration - 0.01, t));
-    dirtyRef.current = true;
-  }, [duration]);
+  loopRef.current = loop;
+
+  const seek = useCallback(
+    (t) => {
+      const v = videoRef.current;
+      if (!v) return;
+      windowRef.current = null;
+      v.currentTime = Math.max(t0, Math.min(tEnd - 0.01, t));
+      dirtyRef.current = true;
+    },
+    [t0, tEnd],
+  );
 
   const playRep = useCallback(
     (index) => {
@@ -150,35 +56,84 @@ const VideoPlayer = forwardRef(function VideoPlayer({ src, rotation, analysis, s
       const v = videoRef.current;
       if (!rep || !v) return;
       onSelectRep?.(index);
-      v.currentTime = Math.max(0, rep.tStart - 0.2);
-      stopAtRef.current = Math.min(duration, rep.tEnd + 0.25);
+      windowRef.current = { start: Math.max(t0, rep.tStart - LEAD_IN), end: Math.min(tEnd, rep.tEnd + LEAD_OUT) };
+      v.currentTime = windowRef.current.start;
       v.playbackRate = rate;
       v.play().catch(() => {});
       dirtyRef.current = true;
     },
-    [reps, duration, onSelectRep, rate],
+    [reps, t0, tEnd, onSelectRep, rate],
   );
 
-  useImperativeHandle(ref, () => ({ playRep, seek }), [playRep, seek]);
+  const togglePlay = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (!v.paused) {
+      v.pause();
+      return;
+    }
+    if (loopRef.current && selectedRep) {
+      playRep(selectedRep);
+      return;
+    }
+    windowRef.current = null;
+    if (v.currentTime >= tEnd - 0.05 || v.currentTime < t0) v.currentTime = t0;
+    v.playbackRate = rate;
+    v.play().catch(() => {});
+  }, [playRep, selectedRep, t0, tEnd, rate]);
+
+  const stepRep = useCallback(
+    (dir) => {
+      if (!reps.length) return;
+      const now = videoRef.current?.currentTime ?? time;
+      const current = selectedRep ? reps.find((r) => r.index === selectedRep) : repAt(reps, now);
+      let idx;
+      if (current) idx = current.index + dir;
+      else if (dir > 0) idx = reps.find((r) => r.tStart > now)?.index ?? reps.length;
+      else idx = [...reps].reverse().find((r) => r.tEnd < now)?.index ?? 1;
+      playRep(Math.max(1, Math.min(reps.length, idx)));
+    },
+    [reps, selectedRep, playRep, time],
+  );
+
+  useImperativeHandle(ref, () => ({ playRep, seek, togglePlay }), [playRep, seek, togglePlay]);
+
+  // Keyboard: space plays/pauses, arrows move between reps.
+  useEffect(() => {
+    if (!keyboard) return undefined;
+    const onKey = (e) => {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || isTypingTarget(e.target)) return;
+      if (e.key === ' ' || e.code === 'Space') {
+        if (isInteractive(e.target)) return; // a focused button handles its own space press
+        e.preventDefault();
+        togglePlay();
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        if (e.target?.closest?.('[role="slider"], [role="tablist"]')) return;
+        e.preventDefault();
+        stepRep(e.key === 'ArrowRight' ? 1 : -1);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [keyboard, togglePlay, stepRep]);
+
+  // Turning the loop on starts repeating the selected rep right away.
+  const loopArmed = useRef(false);
+  useEffect(() => {
+    if (!loopArmed.current) {
+      loopArmed.current = true;
+      return;
+    }
+    if (loop && selectedRep) playRep(selectedRep);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loop]);
 
   // Size the canvas to its container, keeping the video's aspect ratio.
   useEffect(() => {
     const wrap = wrapRef.current;
     const canvas = canvasRef.current;
-    const ar = analysis.width / analysis.height;
     const resize = () => {
-      const maxH = Math.min(window.innerHeight * 0.68, 720);
-      let w = wrap.clientWidth;
-      let h = w / ar;
-      if (h > maxH) {
-        h = maxH;
-        w = h * ar;
-      }
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      canvas.style.width = `${Math.round(w)}px`;
-      canvas.style.height = `${Math.round(h)}px`;
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
+      fitCanvas(canvas, wrap.clientWidth, analysis.width / analysis.height, Math.min(window.innerHeight * 0.68, 720));
       dirtyRef.current = true;
     };
     resize();
@@ -193,23 +148,45 @@ const VideoPlayer = forwardRef(function VideoPlayer({ src, rotation, analysis, s
 
   useEffect(() => {
     dirtyRef.current = true;
-  }, [showSkeleton, selectedRep]);
+  }, [showSkeleton, selectedRep, highlight]);
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.playbackRate = rate;
+  }, [rate]);
+
+  // Start at the beginning of the analyzed range (it may be trimmed).
+  useEffect(() => {
+    const v = videoRef.current;
+    if (v && t0 > 0) v.currentTime = t0;
+  }, [src, t0]);
+
+  // End-of-window handling, shared by the render loop and timeupdate.
+  const checkWindow = useCallback(
+    (v) => {
+      const w = windowRef.current;
+      if (w && v.currentTime >= w.end) {
+        if (loopRef.current) {
+          resumeRef.current = true;
+          v.currentTime = w.start;
+          v.play().catch(() => {});
+        } else {
+          v.pause();
+          windowRef.current = null;
+        }
+      } else if (!w && !v.paused && v.currentTime >= tEnd) {
+        v.pause();
+      }
+    },
+    [tEnd],
+  );
 
   // Render loop: draws only when the frame or overlay settings changed.
   useEffect(() => {
-    colorsRef.current = {
-      green: cssVar('--good', '#0ca30c'),
-      yellow: cssVar('--warn', '#fab219'),
-      red: cssVar('--bad', '#d03b3b'),
-      unknown: cssVar('--unknown', '#8a909c'),
-      neutral: 'rgba(236,238,242,0.92)',
-      far: 'rgba(236,238,242,0.38)',
-      accent: cssVar('--accent', '#a594ff'),
-    };
+    const colors = overlayColors();
     let raf;
     let last = -1;
     let lastUiUpdate = 0;
-    const loop = (now) => {
+    const loopFn = (now) => {
       const v = videoRef.current;
       const c = canvasRef.current;
       if (v && c && v.readyState >= 2) {
@@ -217,19 +194,20 @@ const VideoPlayer = forwardRef(function VideoPlayer({ src, rotation, analysis, s
           readyRef.current = true;
           setReady(true);
         }
+        checkWindow(v);
         const t = v.currentTime;
-        if (stopAtRef.current != null && t >= stopAtRef.current) {
-          v.pause();
-          stopAtRef.current = null;
-        }
         if (t !== last || dirtyRef.current) {
           const ctx = c.getContext('2d');
           drawVideoFrame(ctx, v, rotation, c.width, c.height);
           if (showSkeleton) {
             const rep = repAt(reps, t);
-            const colors = colorsRef.current;
-            const statusColor = rep ? colors[rep.status] || colors.unknown : colors.neutral;
-            drawSkeleton(ctx, analysis, t, c.width / analysis.width, c.width / parseFloat(c.style.width || c.width), colors, statusColor);
+            drawSkeleton(ctx, analysis, t, {
+              scale: c.width / analysis.width,
+              dpr: c.width / parseFloat(c.style.width || c.width),
+              colors,
+              statusColor: rep ? colors[rep.status] || colors.unknown : colors.neutral,
+              highlight,
+            });
           }
           last = t;
           dirtyRef.current = false;
@@ -239,33 +217,14 @@ const VideoPlayer = forwardRef(function VideoPlayer({ src, rotation, analysis, s
           lastUiUpdate = now;
         }
       }
-      raf = requestAnimationFrame(loop);
+      raf = requestAnimationFrame(loopFn);
     };
-    raf = requestAnimationFrame(loop);
+    raf = requestAnimationFrame(loopFn);
     return () => cancelAnimationFrame(raf);
-  }, [analysis, reps, rotation, showSkeleton]);
-
-  useEffect(() => {
-    if (videoRef.current) videoRef.current.playbackRate = rate;
-  }, [rate]);
-
-  const togglePlay = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (v.paused) {
-      stopAtRef.current = null;
-      if (v.currentTime >= duration - 0.05) v.currentTime = 0;
-      v.play().catch(() => {});
-    } else v.pause();
-  };
+  }, [analysis, reps, rotation, showSkeleton, highlight, checkWindow]);
 
   const current = repAt(reps, time);
   const status = current ? STATUS[current.status] || STATUS.unknown : null;
-  const stepRep = (dir) => {
-    const idx = current ? current.index + dir : dir > 0 ? (reps.find((r) => r.tStart > time)?.index ?? reps.length) : ([...reps].reverse().find((r) => r.tEnd < time)?.index ?? 1);
-    const clamped = Math.max(1, Math.min(reps.length, idx));
-    playRep(clamped);
-  };
 
   return (
     <div className="player">
@@ -286,17 +245,15 @@ const VideoPlayer = forwardRef(function VideoPlayer({ src, rotation, analysis, s
             dirtyRef.current = true;
           }}
           onCanPlay={() => setReady(true)}
-          onSeeked={() => {
+          onSeeked={(e) => {
             dirtyRef.current = true;
-          }}
-          onTimeUpdate={(e) => {
-            // Backup for single-rep playback when animation frames are throttled.
-            const v = e.currentTarget;
-            if (stopAtRef.current != null && v.currentTime >= stopAtRef.current) {
-              v.pause();
-              stopAtRef.current = null;
+            // Some browsers pause a muted video after a seek; keep a looping rep going.
+            if (resumeRef.current) {
+              resumeRef.current = false;
+              if (e.currentTarget.paused && loopRef.current) e.currentTarget.play().catch(() => {});
             }
           }}
+          onTimeUpdate={(e) => checkWindow(e.currentTarget)}
         />
         {!ready && <div className="player-loading">Loading video</div>}
         {current && (
@@ -305,12 +262,13 @@ const VideoPlayer = forwardRef(function VideoPlayer({ src, rotation, analysis, s
             Rep {current.index}
             <span className="badge-sep">·</span>
             {current.isBaseline ? 'Baseline' : status.label}
+            {loop && selectedRep === current.index && <span className="badge-loop">Looping</span>}
           </div>
         )}
       </div>
 
       <div className="player-controls">
-        <button type="button" className="icon-btn" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'}>
+        <button type="button" className="icon-btn" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'} title="Play or pause (Space)">
           {playing ? (
             <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
               <rect x="4.5" y="3.5" width="4" height="13" rx="1.2" fill="currentColor" />
@@ -323,30 +281,32 @@ const VideoPlayer = forwardRef(function VideoPlayer({ src, rotation, analysis, s
           )}
         </button>
         <span className="clock">
-          {fmtClock(time)} <span className="muted">/ {fmtClock(duration)}</span>
+          {fmtClock(time)} <span className="muted">/ {fmtClock(tEnd)}</span>
         </span>
         <div className="controls-right">
-          <button type="button" className="chip" onClick={() => stepRep(-1)}>
+          <button type="button" className="chip" onClick={() => stepRep(-1)} title="Previous rep (Left arrow)">
             Prev rep
           </button>
-          <button type="button" className="chip" onClick={() => stepRep(1)}>
+          <button type="button" className="chip" onClick={() => stepRep(1)} title="Next rep (Right arrow)">
             Next rep
           </button>
-          <div className="segmented segmented-small" role="group" aria-label="Playback speed">
-            {[0.5, 1].map((r) => (
-              <button type="button" key={r} className={rate === r ? 'is-active' : ''} aria-pressed={rate === r} onClick={() => setRate(r)}>
-                {r}×
-              </button>
-            ))}
-          </div>
-          <button type="button" className={`chip ${showSkeleton ? 'is-on' : ''}`} aria-pressed={showSkeleton} onClick={() => setShowSkeleton((s) => !s)}>
-            Skeleton
-          </button>
+          <PlaybackControls
+            rate={rate}
+            onRate={onRate}
+            showSkeleton={showSkeleton}
+            onToggleSkeleton={onToggleSkeleton}
+            loop={loop}
+            onToggleLoop={() => {
+              if (!loop && !selectedRep && reps.length) onSelectRep?.((current || reps[0]).index);
+              onToggleLoop();
+            }}
+          />
         </div>
       </div>
 
       <Timeline
-        duration={duration}
+        t0={t0}
+        duration={analysis.duration}
         reps={reps}
         time={time}
         selectedRep={selectedRep}
@@ -359,6 +319,17 @@ const VideoPlayer = forwardRef(function VideoPlayer({ src, rotation, analysis, s
         }}
         onRep={playRep}
       />
+      {keyboard && (
+        <p className="shortcut-hint">
+          <span>
+            <kbd>Space</kbd> play or pause
+          </span>
+          <span>
+            <kbd>←</kbd>
+            <kbd>→</kbd> previous or next rep
+          </span>
+        </p>
+      )}
     </div>
   );
 });

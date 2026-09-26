@@ -4,6 +4,8 @@ import CameraGuide from './CameraGuide.jsx';
 import { prepareVideo, VideoLoadError } from '../lib/video/load.js';
 import { drawVideoFrame, rotatedSize, seekVideo } from '../lib/video/frame.js';
 import { mentionsPain } from '../lib/report/safety.js';
+import { SAMPLE } from '../config/sample.js';
+import { weightFor } from '../lib/prefs.js';
 
 function validate(input) {
   const errors = {};
@@ -54,6 +56,7 @@ export default function SetupView({ input, onInputChange, onAnalyze, initialPrep
   const [userRotation, setUserRotation] = useState(0);
   const [loadState, setLoadState] = useState({ status: initialPrepared ? 'ready' : 'idle' });
   const [dragOver, setDragOver] = useState(false);
+  const [sampleState, setSampleState] = useState(null); // null | 'loading' | error message
   const fileInputRef = useRef(null);
   const exercise = EXERCISES[input.exerciseId];
   const errors = validate(input);
@@ -89,6 +92,26 @@ export default function SetupView({ input, onInputChange, onAnalyze, initialPrep
     }
   }
 
+  // Loads the bundled demo clip and runs the normal analysis on it.
+  async function trySample() {
+    if (sampleState === 'loading') return;
+    onDismissError?.();
+    setSampleState('loading');
+    try {
+      const res = await fetch(SAMPLE.url);
+      if (!res.ok) throw new Error(`The sample video is missing (${res.status}).`);
+      const blob = await res.blob();
+      const file = new File([blob], SAMPLE.fileName, { type: blob.type || 'video/mp4' });
+      const p = await prepareVideo(file);
+      p.fileName = SAMPLE.fileName;
+      setSampleState(null);
+      onAnalyze({ ...SAMPLE.input }, p);
+    } catch (err) {
+      console.error(err);
+      setSampleState(err?.message || 'The sample video could not be loaded.');
+    }
+  }
+
   function submit(e) {
     e.preventDefault();
     setTouched(true);
@@ -114,6 +137,19 @@ export default function SetupView({ input, onInputChange, onAnalyze, initialPrep
           Spotter compares every rep in a set against your own first reps and shows where, and by how much, the movement drifted. It
           describes what happened. Decisions about weight stay with you.
         </p>
+        <div className="sample-row">
+          <button type="button" className="btn btn-secondary" onClick={trySample} disabled={sampleState === 'loading'} aria-busy={sampleState === 'loading'}>
+            {sampleState === 'loading' ? 'Loading sample…' : 'Try a sample'}
+          </button>
+          <p className="sample-note">
+            <strong>{SAMPLE.title}.</strong> {SAMPLE.description} Runs the full analysis on this device.
+          </p>
+        </div>
+        {sampleState && sampleState !== 'loading' && (
+          <p className="field-error" role="alert">
+            {sampleState}
+          </p>
+        )}
       </div>
 
       {error && (
@@ -140,7 +176,15 @@ export default function SetupView({ input, onInputChange, onAnalyze, initialPrep
                       name="exercise"
                       value={id}
                       checked={active}
-                      onChange={() => set({ exerciseId: id, bodyweight: ex.allowBodyweight ? input.bodyweight : false })}
+                      onChange={() => {
+                        // Pre-fill the weight last used for this exercise.
+                        const w = weightFor(id);
+                        set(
+                          w
+                            ? { exerciseId: id, weight: w.weight ?? '', unit: w.unit === 'kg' ? 'kg' : 'lb', bodyweight: ex.allowBodyweight ? Boolean(w.bodyweight) : false }
+                            : { exerciseId: id, bodyweight: ex.allowBodyweight ? input.bodyweight : false },
+                        );
+                      }}
                     />
                     <span className="exercise-name">{ex.name}</span>
                     <span className="exercise-view">{ex.viewLabel}</span>

@@ -2,15 +2,15 @@ import { useRef } from 'react';
 import { STATUS, fmtClock } from './status.js';
 import { listReps } from '../lib/report/format.js';
 
-export default function Timeline({ duration, reps, time, selectedRep, baselineReps, breakdown, onSeek, onRep }) {
+export default function Timeline({ t0 = 0, duration, reps, time, selectedRep, baselineReps, breakdown, onSeek, onRep }) {
   const trackRef = useRef(null);
   const dragging = useRef(false);
-  const pct = (t) => `${Math.max(0, Math.min(100, (t / duration) * 100))}%`;
+  const pct = (t) => `${Math.max(0, Math.min(100, ((t - t0) / duration) * 100))}%`;
 
   const seekFromEvent = (e) => {
     const rect = trackRef.current.getBoundingClientRect();
     const f = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    onSeek(f * duration);
+    onSeek(t0 + f * duration);
   };
 
   const baseline = reps.filter((r) => baselineReps.includes(r.index));
@@ -67,8 +67,8 @@ export default function Timeline({ duration, reps, time, selectedRep, baselineRe
         <div className="tl-playhead" style={{ left: pct(time) }} aria-hidden="true" />
       </div>
       <div className="tl-times" aria-hidden="true">
-        <span>{fmtClock(0)}</span>
-        <span>{fmtClock(duration)}</span>
+        <span>{fmtClock(t0)}</span>
+        <span>{fmtClock(t0 + duration)}</span>
       </div>
     </div>
   );

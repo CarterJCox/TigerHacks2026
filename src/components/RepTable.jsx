@@ -1,6 +1,7 @@
 import { getExercise } from '../config/exercises/index.js';
 import { fmtNum, fmtDelta, listReps } from '../lib/report/format.js';
 import { STATUS } from './status.js';
+import { useMetricHover } from './highlight.js';
 
 function unitHeader(def) {
   if (def.unit === '°') return '°';
@@ -11,6 +12,7 @@ function unitHeader(def) {
 export default function RepTable({ analysis, selectedRep, onRep }) {
   const cfg = getExercise(analysis.exerciseId);
   const keys = Object.keys(cfg.metrics);
+  const hover = useMetricHover();
   return (
     <div className="table-wrap" role="region" aria-label="Rep-by-rep measurements" tabIndex={0}>
       <table className="rep-table">
@@ -24,7 +26,7 @@ export default function RepTable({ analysis, selectedRep, onRep }) {
               Score
             </th>
             {keys.map((k) => (
-              <th scope="col" key={k} className="num">
+              <th scope="col" key={k} className="num th-metric" tabIndex={0} {...hover(k)}>
                 <span className="th-label">{cfg.metrics[k].short}</span>
                 <span className="th-unit">{unitHeader(cfg.metrics[k])}</span>
               </th>
@@ -44,7 +46,7 @@ export default function RepTable({ analysis, selectedRep, onRep }) {
               const s = analysis.stats[k];
               const def = cfg.metrics[k];
               return (
-                <td key={k} className="num">
+                <td key={k} className="num" {...hover(k)}>
                   <span className="cell-value">{fmtNum(s.mean, def)}</span>
                   {s.n > 1 && (
                     <span className="cell-delta muted">
@@ -86,7 +88,7 @@ export default function RepTable({ analysis, selectedRep, onRep }) {
                   const d = r.deviations[k];
                   const flagged = d?.level === 'notable' || d?.level === 'major';
                   return (
-                    <td key={k} className={`num ${flagged ? `lvl-${d.level}` : ''}`}>
+                    <td key={k} className={`num ${flagged ? `lvl-${d.level}` : ''}`} {...hover(k)}>
                       <span className="cell-value">{fmtNum(r.metrics[k], def)}</span>
                       {!r.isBaseline && d && Number.isFinite(d.delta) && <span className="cell-delta">{fmtDelta(d, def)}</span>}
                     </td>

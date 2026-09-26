@@ -22,7 +22,7 @@ export default function AnalyzingView({ progress, input, onCancel }) {
   return (
     <section className="analyzing" aria-live="polite">
       <p className="eyebrow">{ex.name}</p>
-      <h1>Analyzing your set</h1>
+      <h1>{input.sample ? 'Analyzing the sample set' : 'Analyzing your set'}</h1>
       <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(overall * 100)}>
         <span style={{ transform: `scaleX(${overall})` }} />
       </div>

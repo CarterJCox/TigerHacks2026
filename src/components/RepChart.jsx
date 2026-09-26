@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { getExercise } from '../config/exercises/index.js';
 import { useWidth } from './useWidth.js';
 import { STATUS } from './status.js';
+import { useMetricHover } from './highlight.js';
 import { fmt, fmtDelta, unitLabel } from '../lib/report/format.js';
 
 const H = 240;
@@ -21,6 +22,7 @@ function niceTicks(lo, hi, count = 4) {
 }
 
 export default function RepChart({ analysis, selectedRep, onRep }) {
+  const metricHover = useMetricHover();
   const cfg = getExercise(analysis.exerciseId);
   const [mode, setMode] = useState('score');
   const [hover, setHover] = useState(null);
@@ -109,12 +111,20 @@ export default function RepChart({ analysis, selectedRep, onRep }) {
           Score
         </button>
         {metricKeys.map((k) => (
-          <button key={k} role="tab" aria-selected={mode === k} className={mode === k ? 'is-active' : ''} onClick={() => setMode(k)}>
+          <button key={k} role="tab" aria-selected={mode === k} className={mode === k ? 'is-active' : ''} onClick={() => setMode(k)} {...metricHover(k)}>
             {cfg.metrics[k].short}
           </button>
         ))}
       </div>
-      <div className="chart-body" ref={ref} onPointerLeave={() => setHover(null)}>
+      <div
+        className="chart-body"
+        ref={ref}
+        onPointerEnter={() => mode !== 'score' && metricHover(mode).onMouseEnter()}
+        onPointerLeave={() => {
+          setHover(null);
+          if (mode !== 'score') metricHover(mode).onMouseLeave();
+        }}
+      >
         <svg width={width} height={H} role="img" aria-label={mode === 'score' ? 'Bar chart of form score for each rep' : `Line chart of ${cfg.metrics[mode].label} for each rep against the baseline`}>
           {/* Grid + y ticks */}
           {ticks.map((t) => (

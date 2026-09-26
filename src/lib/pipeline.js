@@ -13,6 +13,8 @@ export async function runAnalysis({ prepared, exerciseId, painReported, onProgre
     rotation: prepared.rotation,
     fps: SAMPLE_FPS,
     maxSide: ANALYSIS_MAX_SIDE,
+    start: prepared.trim?.start ?? 0,
+    end: prepared.trim?.end ?? null,
     signal,
     onProgress: ({ done, total, eta }) => onProgress({ stage: 'pose', fraction: done / total, done, total, eta }),
   });

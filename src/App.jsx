@@ -10,6 +10,8 @@ import { buildTemplateReport } from './lib/report/template.js';
 import { buildPayload } from './lib/report/payload.js';
 import { fetchLlmReport, fetchReportStatus } from './lib/report/client.js';
 import { saveSession, sessionFromAnalysis } from './lib/history.js';
+import { EXERCISES } from './config/exercises/index.js';
+import { initialInput, rememberInput } from './lib/prefs.js';
 
 const DEFAULT_INPUT = {
   exerciseId: 'curl',
@@ -23,13 +25,22 @@ const DEFAULT_INPUT = {
 
 export default function App() {
   const [screen, setScreen] = useState('setup');
-  const [input, setInput] = useState(DEFAULT_INPUT);
+  const [input, setInput] = useState(() => {
+    const init = initialInput(DEFAULT_INPUT);
+    return EXERCISES[init.exerciseId] ? init : DEFAULT_INPUT;
+  });
+  const [runInput, setRunInput] = useState(null); // input of the analysis in progress or shown
   const [prepared, setPrepared] = useState(null);
   const [progress, setProgress] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [historyExercise, setHistoryExercise] = useState(null);
   const abortRef = useRef(null);
+
+  // Remember the selected exercise and weight for next time.
+  useEffect(() => {
+    rememberInput(input);
+  }, [input.exerciseId, input.weight, input.unit, input.bodyweight]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep the page scrolled to the top on screen changes.
   useEffect(() => {
@@ -56,7 +67,9 @@ export default function App() {
 
   const analyze = useCallback(
     async (finalInput, preparedVideo) => {
-      setInput(finalInput);
+      // The sample carries its own inputs; the user's form stays as it was.
+      if (!finalInput.sample) setInput(finalInput);
+      setRunInput(finalInput);
       setPrepared(preparedVideo);
       setScreen('analyzing');
       setError(null);
@@ -79,7 +92,8 @@ export default function App() {
           return;
         }
         const report = buildTemplateReport(analysis, finalInput);
-        saveSession(finalInput.exerciseId, sessionFromAnalysis(analysis, finalInput, report.headline));
+        // The bundled sample isn't the user's set, so it stays out of their history.
+        if (!finalInput.sample) saveSession(finalInput.exerciseId, sessionFromAnalysis(analysis, finalInput, report.headline));
         const { llm: llmAvailable } = await fetchReportStatus();
         setResult({ analysis, input: finalInput, report, llmPending: llmAvailable });
         setScreen('results');
@@ -170,7 +184,7 @@ export default function App() {
             onDismissError={() => setError(null)}
           />
         )}
-        {screen === 'analyzing' && <AnalyzingView progress={progress} input={input} onCancel={cancelAnalysis} />}
+        {screen === 'analyzing' && <AnalyzingView progress={progress} input={runInput || input} onCancel={cancelAnalysis} />}
         {screen === 'rejected' && result && (
           <RejectedView analysis={result.analysis} input={result.input} onRetry={() => startOver(true)} />
         )}
