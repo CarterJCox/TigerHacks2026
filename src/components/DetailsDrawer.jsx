@@ -1,6 +1,6 @@
 // Everything for people who want to dig in, kept off the main screen:
-// the written summary, the rep-by-rep table, the per-metric chart and how
-// the numbers were measured.
+// the written summary, the form standards, the rep-by-rep table, the
+// per-metric chart and how the numbers were measured.
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -8,10 +8,12 @@ import { getExercise } from '../config/exercises/index.js';
 import { fmt, fmtLong, fmtRange, listReps } from '../lib/report/format.js';
 import RepTable from './RepTable.jsx';
 import RepChart from './RepChart.jsx';
+import FormStandardsTable from './FormStandardsTable.jsx';
 import { useMetricHover } from './highlight.js';
 
 const TABS = [
   ['summary', 'Summary'],
+  ['form', 'Form standards'],
   ['reps', 'Rep table'],
   ['chart', 'Chart'],
   ['method', 'How it was measured'],
@@ -109,10 +111,12 @@ function Method({ analysis }) {
       </dl>
       <h3>How reps are scored</h3>
       <p className="drawer-text small">
-        Each rep is compared with the average of your baseline reps ({listReps(analysis.baselineReps)}). The 0–100 score drops in proportion to how far
-        each measure moved in the worse direction, relative to that measure's "major" threshold plus the range your baseline reps covered,
-        so small differences cost a few points. The colour is stricter: a rep turns yellow or red only when a measure moves past the range your
-        baseline reps already covered by more than the thresholds below.
+        Every rep, your first ones included, is checked against the fixed limits in the Form standards tab. Crossing a red limit means injury
+        risk; crossing a yellow one means the rep is less effective for building muscle. Separately, each rep is compared with the average of
+        your first reps ({listReps(analysis.baselineReps)}), which are not assumed to be good form. A rep that moves past the range your first reps
+        covered by more than the thresholds below also counts as yellow. The rep colour is the more serious of the two. The 0–100 consistency
+        score drops in proportion to how far each measure moved in the worse direction, relative to that measure's "major" threshold plus the
+        range your first reps covered, so small differences cost a few points.
       </p>
       <h3>What each number means</h3>
       <ul className="drawer-list">
@@ -121,8 +125,8 @@ function Method({ analysis }) {
             <strong>{def.label}</strong> <span className={`rel rel-${def.reliability}`}>{def.reliability} reliability</span>
             <br />
             <span className="muted">
-              {def.description} Flagged when a rep goes {def.mode === 'relative' ? `${Math.round(def.notable * 100)}% of the baseline average` : fmtLong(def.notable, def)} beyond
-              your baseline range (major at {def.mode === 'relative' ? `${Math.round(def.major * 100)}%` : fmtLong(def.major, def)}). Baseline average{' '}
+              {def.description} Flagged when a rep goes {def.mode === 'relative' ? `${Math.round(def.notable * 100)}% of your first reps' average` : fmtLong(def.notable, def)} beyond
+              the range of your first reps (major at {def.mode === 'relative' ? `${Math.round(def.major * 100)}%` : fmtLong(def.major, def)}). Average of your first reps{' '}
               {fmt(analysis.stats[k]?.mean, def)}.
             </span>
           </li>
@@ -180,9 +184,14 @@ export default function DetailsDrawer({ open, onClose, analysis, input, report, 
         </header>
         <div className="drawer-body">
           {open && tab === 'summary' && <Summary analysis={analysis} input={input} report={report} llmPending={llmPending} />}
+          {open && tab === 'form' && (
+            <div className="drawer-section">
+              <FormStandardsTable analysis={analysis} selectedRep={selectedRep} onRep={onRep} />
+            </div>
+          )}
           {open && tab === 'reps' && (
             <div className="drawer-section">
-              <p className="muted small">Each rep's measurements, with the change from your baseline average underneath. Select a row to play that rep.</p>
+              <p className="muted small">Each rep's measurements, with the change from your first reps' average underneath. Select a row to play that rep.</p>
               <RepTable analysis={analysis} selectedRep={selectedRep} onRep={onRep} />
             </div>
           )}

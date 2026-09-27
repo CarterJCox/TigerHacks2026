@@ -18,10 +18,12 @@ describe('template report', () => {
   it('writes a headline with the breakdown rep and measured numbers', () => {
     const a = breakdownSet();
     const r = buildTemplateReport(a, { plannedReps: 10 });
-    expect(r.headline).toMatch(/^Form held for reps 1–5 and broke down at rep 6: /);
+    // Injury risk leads; the comparison with the first reps follows.
+    expect(r.headline).toMatch(/^Injury risk on reps 6 and 8: torso swung \d+° to lift the weight \(limit 10°\)\. /);
+    expect(r.headline).toMatch(/ Form held for reps 1–5 and broke down at rep 6: /);
     expect(r.headline).toMatch(/\d+°/);
     expect(r.summary).toContain('you planned 10');
-    expect(r.summary).toContain('Reps 1–3 are your baseline');
+    expect(r.summary).toContain('Reps 1–3 are your first reps');
     expect(r.cues.length).toBeGreaterThan(0);
   });
 
@@ -35,7 +37,7 @@ describe('template report', () => {
     const a = analyzeTrack(sideTrack(tl), 'curl');
     expect(a.breakdown).toBeNull();
     expect(a.isolated).toEqual([6]);
-    expect(buildTemplateReport(a, {}).headline).toMatch(/^Form held across the set apart from rep 6, where .*; the rep after it returned to your baseline\.$/);
+    expect(buildTemplateReport(a, {}).headline).toMatch(/ Form held across the set apart from rep 6, where .*; the rep after it returned to the range of your first reps\.$/);
   });
 
   it('counts a red final rep as the breakdown point', () => {
@@ -63,8 +65,8 @@ describe('LLM safety checks', () => {
     const c = payload.breakdown.causes[0];
     const res = validateLlmReport(
       {
-        headline: `Form held for reps 1-5 and changed at rep 6: ${c.label.toLowerCase()} went from ${c.baseline} to ${c.value}.`,
-        summary: 'Reps 1-3 were your baseline.',
+        headline: `Form held for reps 1-5 and changed at rep 6: ${c.label.toLowerCase()} went from ${c.firstRepsAverage} to ${c.value}.`,
+        summary: 'Reps 1-3 were your first reps.',
         cues: ['Keep your elbows pinned to your sides.'],
       },
       payload,
@@ -73,12 +75,41 @@ describe('LLM safety checks', () => {
   });
 
   it('rejects load prescriptions, diagnoses and invented numbers', () => {
-    const base = { summary: 'Reps 1-3 were your baseline.', cues: [] };
+    const base = { summary: 'Reps 1-3 were your first reps.', cues: [] };
     expect(validateLlmReport({ ...base, headline: 'Try a lighter dumbbell next time.' }, payload).ok).toBe(false);
     expect(validateLlmReport({ ...base, headline: 'Use 15 lb for the next set.' }, payload).ok).toBe(false);
     expect(validateLlmReport({ ...base, headline: 'Do fewer reps so form holds.' }, payload).ok).toBe(false);
     expect(validateLlmReport({ ...base, headline: 'This pattern leads to tendinitis.' }, payload).ok).toBe(false);
     expect(validateLlmReport({ ...base, headline: 'Your swing grew by 987 degrees.' }, payload).ok).toBe(false);
+  });
+
+  it('sends form-standard flags red first, with limits, and still no weight', () => {
+    const f = payload.formStandards;
+    expect(f.setSeverity).toBe('red');
+    expect(f.flags.length).toBeGreaterThan(0);
+    const order = f.flags.map((x) => x.severity);
+    expect([...order].sort((x, y) => (x === y ? 0 : x === 'red' ? -1 : 1))).toEqual(order);
+    expect(f.rules.find((r) => r.rule === 'torsoSwing')).toMatchObject({ yellowLimit: 5, redLimit: 10, worseWhen: 'higher' });
+    expect(payload.reps[5].severity).toBe('red');
+    expect(payload.reps[5].formFlags.map((x) => x.rule)).toContain('torsoSwing');
+    expect(JSON.stringify(payload)).not.toMatch(/weight"/i);
+  });
+
+  it('accepts form-standard wording and numbers, and rejects claims that harm is certain', () => {
+    const flag = payload.formStandards.flags[0];
+    const base = { summary: 'Reps 1-3 were your first reps.', cues: ['Keep your chest and hips still.'] };
+    const ok = validateLlmReport(
+      { ...base, headline: `Injury risk on reps 6 and 8: your torso swung ${flag.worstValue}° to lift the weight (limit ${flag.limit}°), a pattern linked to extra strain.` },
+      payload,
+    );
+    expect(ok.ok).toBe(true);
+    expect(validateLlmReport({ ...base, headline: 'This swing will cause an injury.' }, payload).ok).toBe(false);
+    expect(validateLlmReport({ ...base, headline: 'Keep swinging like this and you will get hurt.' }, payload).ok).toBe(false);
+    expect(validateLlmReport({ ...base, headline: "You're going to injure your back." }, payload).ok).toBe(false);
+    // Movement targets quoted from the form limits are fine; load and rep targets are not.
+    expect(validateLlmReport({ ...base, headline: 'Rep 6 closed the elbow to only 81° at the top (aim for 80° or less).' }, payload).ok).toBe(true);
+    expect(validateLlmReport({ ...base, headline: 'Aim for 8 reps next time.' }, payload).ok).toBe(false);
+    expect(validateLlmReport({ ...base, headline: 'Try 10 lb instead.' }, payload).ok).toBe(false);
   });
 
   it('strips cues when pain was reported', () => {
@@ -115,8 +146,10 @@ describe('plain-text export', () => {
     expect(text).toContain('Weight: 25 lb');
     expect(text).toContain('Reps: 8 counted of 10 planned');
     expect(text).toContain('Breakdown rep: rep 6');
-    expect(text).toMatch(/Key findings\n- Rep 6: .*\d+° → \d+°/);
-    expect(text).toContain('Rep 8: Broke down');
+    expect(text).toMatch(/Key findings \(compared with your first reps\)\n- Rep 6: .*\d+° → \d+°/);
+    expect(text).toContain('Rep 8: Injury risk (vs first reps broke down');
+    expect(text).toMatch(/Form gauge: Injury risk \(gauge \d+\/100\): Torso swung/);
+    expect(text).toMatch(/Form standards \(fixed limits, every rep\)\n- Injury risk: Torso swung/);
   });
 
   it('falls back to key numbers when nothing changed', async () => {
@@ -124,16 +157,25 @@ describe('plain-text export', () => {
     const a = analyzeTrack(sideTrack(curlSet(Array(6).fill(clean))), 'curl');
     const text = buildPlainTextReport(a, { bodyweight: false, weight: 20, unit: 'kg', plannedReps: 6 }, buildTemplateReport(a, {}));
     expect(text).toContain('Breakdown rep: none, form held');
-    expect(text).toMatch(/Key numbers\n- Elbow range of motion: \d+° baseline/);
+    expect(text).toMatch(/Key numbers\n- Elbow range of motion: \d+° on your first reps/);
+    expect(text).toContain('Form gauge: Good form');
   });
 });
 
 describe('short headline', () => {
   it('names the breakdown rep and the top change in one line', async () => {
     const { buildShortHeadline } = await import('../src/lib/report/template.js');
-    const line = buildShortHeadline(breakdownSet());
-    expect(line).toMatch(/^Form broke down at rep 6: [a-z-]+( [a-z-]+)* (up|down) \d+(°|%| s| pts)/);
+    // A change against the first reps that stays below every red limit.
+    const drift = { top: 80, lift: 0.7, lower: 0.6, lean: 7, arm: 12 };
+    const a = analyzeTrack(sideTrack(curlSet([...Array(5).fill(clean), ...Array(3).fill(drift)])), 'curl');
+    const line = buildShortHeadline(a);
+    expect(line).toMatch(/^Form changed from rep 6: [a-z-]+( [a-z-]+)* (up|down) \d+(°|%| s| pts)/);
     expect(line.length).toBeLessThan(80);
+  });
+
+  it('leads with injury risk when a rep crosses a red limit', async () => {
+    const { buildShortHeadline } = await import('../src/lib/report/template.js');
+    expect(buildShortHeadline(breakdownSet())).toBe('Injury risk on reps 6 and 8: torso swing');
   });
 
   it('says form held through all reps when nothing changed', async () => {

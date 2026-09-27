@@ -24,6 +24,8 @@ export default {
     const elbowAngleMean = newSeries(n);
     const lateralLean = newSeries(n);
     const hipY = newSeries(n);
+    const elbowRise = newSeries(n);
+    const wristGap = newSeries(n);
     for (let i = 0; i < n; i++) {
       const p = frontPoints(sm, i);
       // Wrist height above its shoulder, as % of torso length (up is positive).
@@ -37,8 +39,14 @@ export default {
       elbowAngleMean[i] = eb.length ? eb.reduce((s, v) => s + v, 0) / eb.length : NaN;
       lateralLean[i] = leanFromVertical(p.hipMid, p.shoulderMid, 1);
       if (p.hipMid) hipY[i] = (p.hipMid.y / torso) * 100;
+      // Elbow height above its shoulder (% torso, averaged over both arms); negative = below.
+      const rise = [];
+      if (p.lShoulder && p.lElbow) rise.push(((p.lShoulder.y - p.lElbow.y) / torso) * 100);
+      if (p.rShoulder && p.rElbow) rise.push(((p.rShoulder.y - p.rElbow.y) / torso) * 100);
+      if (rise.length === 2) elbowRise[i] = (rise[0] + rise[1]) / 2;
+      wristGap[i] = Math.abs(wristL[i] - wristR[i]);
     }
-    return { signal, wristL, wristR, elbowL, elbowR, elbowAngleMean, lateralLean, hipY };
+    return { signal, wristL, wristR, elbowL, elbowR, elbowAngleMean, lateralLean, hipY, elbowRise, wristGap };
   },
 
   repMetrics(rep, S) {

@@ -56,7 +56,8 @@ function add(a, len, angFromDownDeg, facing = 1) {
 /**
  * Side-view body. Params per frame:
  *   lean (torso forward lean, deg), arm (upper arm vs torso, deg),
- *   elbow (elbow angle, deg), knee (knee flexion, deg), hipDrop (px).
+ *   elbow (elbow angle, deg), knee (knee flexion, deg), shin (forward shin
+ *   tilt, deg; defaults to 45% of the knee flexion), heel (px).
  */
 export function sideTrack(tl, { fps = 15, facing = 1, noise = 0.6, seed = 1, near = 'left', dropFrames = [] } = {}) {
   const n = Math.floor(tl.total * fps) + 1;
@@ -75,7 +76,7 @@ export function sideTrack(tl, { fps = 15, facing = 1, noise = 0.6, seed = 1, nea
     const cx = 320 - facing * 20;
     // Legs: thigh and shin; knee flexion splits between hip and ankle angles.
     const ankle = { x: cx, y: 560 };
-    const shinAng = -q.knee * 0.45; // shin tilts forward
+    const shinAng = q.shin != null ? -q.shin : -q.knee * 0.45; // shin tilts forward (degrees from vertical)
     const knee = add(ankle, 130, 180 + shinAng, facing);
     const hip = add(knee, 135, 180 + shinAng + q.knee, facing);
     const shoulder = add(hip, 160, 180 - q.lean, facing);

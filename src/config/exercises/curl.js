@@ -2,8 +2,10 @@
 //
 // Every threshold used to analyze a curl lives in this file. Units:
 //   degrees (°) for angles, seconds (s) for time.
-// Metric thresholds are compared against the user's own baseline reps
-// (the first 2-3 clean reps of the same set), never against an ideal. A rep
+// Two layers check each rep. The form standards (`standards`) are fixed
+// limits every rep is held to. The metric thresholds (`metrics`) are compared
+// against the user's own baseline reps (the first 2-3 clean reps of the same
+// set, shown in the app as "your first reps"), never against an ideal. A rep
 // only counts as changed by how far it goes beyond the range the baseline reps
 // already covered (e.g. below the smallest baseline range of motion).
 //   mode 'absolute': notable/major are in the metric's own unit.
@@ -97,6 +99,144 @@ export default {
     yellowBelow: 85, // level-based score under 85 -> yellow even if no single metric crossed "notable"
     redBelow: 60, // level-based score under 60 -> red
     sustainReps: 2, // the breakdown point needs 2 off-baseline reps in a row (a red final rep also counts); one-off reps are reported as isolated
+  },
+
+  // Form standards: fixed limits every rep is checked against, including the
+  // first reps, independent of how the rest of the set moved. They catch bad
+  // form that is present from rep 1, which the comparison with your first reps
+  // (the metrics below) can't see. How they work:
+  //   series:  the per-frame measurement (from measure/<exercise>.js).
+  //   measure: 'max' / 'min' = the highest / lowest level held for `holdSec`
+  //            (a one-frame spike never counts); 'range' = held max minus
+  //            held min; 'sway' = largest held move away from the rep's
+  //            starting value; 'moved' = like 'max' of scale x value, minus
+  //            however far past zero the rep started (so a reclined posture
+  //            or a tilted camera doesn't count, only movement during the
+  //            rep); 'tempo' = lowering time as % of lifting time.
+  //   scale:   multiplies the result (-1 turns "most negative" into a positive number).
+  //   window:  'rep' = the rep itself; 'reach' = the rep plus the rest
+  //            position on either side (for checks at the bottom of a curl,
+  //            which the rep boundaries exclude).
+  //   worse:   'above' = higher values are worse; 'below' = lower are worse.
+  //   ideal:   where the gauge needle rests when the check is spot on.
+  //   yellow:  less effective for building muscle (safe, but the target
+  //            muscle does less of the work). red: injury risk (a pattern
+  //            linked to extra joint or back strain). Either may be absent.
+  //            Only values past the number (after rounding) are flagged.
+  //   joints:  must be clearly visible (minVisibility) in minClearFraction of
+  //            the checked frames, or the check is skipped for that rep.
+  //            Also the skeleton segments tinted while the issue happens.
+  //   cue:     the coaching cue (a key in `cues`) shown when this flags.
+  //   says:    the reason line under the gauge; {value} is the measurement.
+  //            limitText (default "limit {limit}") is added in brackets.
+  // Not checked from a side view: wrist rotation and grip (not visible to the
+  // pose model), left/right differences (need a front view).
+  standards: {
+    holdSec: 0.2, // a value must hold for 0.2 s (3 frames at 15 fps) before it can be flagged
+    minVisibility: 0.7, // stricter than the 0.5 tracking cutoff: a false flag is worse than a missed one
+    minClearFraction: 0.8,
+    // Shown in the Details drawer under the form standards.
+    notChecked: [
+      'Wrist rotation and grip: not visible to the pose model.',
+      'Left/right differences: need a front view.',
+    ],
+    rules: [
+      {
+        // Rocking the torso to swing the weight up shifts load onto the lower
+        // back. Strict curls keep the hip-to-shoulder line within a few degrees.
+        id: 'torsoSwing',
+        cue: 'torsoSwing', // coaching cue shown when this flags (key in `cues`)
+        label: 'Torso swing',
+        short: 'torso swing',
+        series: 'torsoLean',
+        measure: 'range',
+        window: 'rep',
+        joints: ['Shoulder', 'Hip'],
+        unit: '°',
+        decimals: 0,
+        worse: 'above',
+        ideal: 0,
+        yellow: 5, // moderate momentum: the torso starts helping the lift
+        red: 10, // a clear swing or lean-back, held for 0.2 s, to heave the weight up
+        says: 'Torso swung {value} to lift the weight',
+      },
+      {
+        // When the upper arm swings far forward, the front of the shoulder
+        // lifts the weight and takes load the biceps should carry. A little
+        // forward travel at the top is normal.
+        id: 'upperArmSwing',
+        cue: 'elbowDrift', // coaching cue shown when this flags (key in `cues`)
+        label: 'Upper-arm swing',
+        short: 'upper arm swinging forward',
+        series: 'upperArm',
+        measure: 'range',
+        window: 'rep',
+        joints: ['Shoulder', 'Elbow', 'Hip'],
+        unit: '°',
+        decimals: 0,
+        worse: 'above',
+        ideal: 0,
+        yellow: 20, // the shoulder is starting to help
+        red: 35, // the shoulder is doing much of the lifting
+        says: 'Upper arm swung {value} forward, so the shoulder helped lift',
+      },
+      {
+        // Stopping short of a straight arm skips the stretched part of the
+        // rep, where the biceps work hardest.
+        id: 'bottomExtension',
+        cue: 'rom', // coaching cue shown when this flags (key in `cues`)
+        label: 'Straight arm at the bottom',
+        short: 'arm not straightening at the bottom',
+        series: 'elbowAngle',
+        measure: 'max',
+        window: 'reach',
+        joints: ['Shoulder', 'Elbow', 'Wrist'],
+        unit: '°',
+        decimals: 0,
+        worse: 'below',
+        ideal: 170,
+        yellow: 145, // more than about 35° short of straight
+        says: 'Arm straightened to only {value} at the bottom',
+        limitText: 'aim for {limit} or more',
+      },
+      {
+        // Stopping well before the top leaves out full contraction.
+        id: 'topContraction',
+        cue: 'rom', // coaching cue shown when this flags (key in `cues`)
+        label: 'Full curl at the top',
+        short: 'curl stopping short of the top',
+        series: 'elbowAngle',
+        measure: 'min',
+        window: 'rep',
+        joints: ['Shoulder', 'Elbow', 'Wrist'],
+        unit: '°',
+        decimals: 0,
+        worse: 'above',
+        ideal: 45,
+        yellow: 80, // the forearm barely passes horizontal
+        says: 'Elbow closed to only {value} at the top',
+        limitText: 'aim for {limit} or less',
+      },
+      {
+        // Dropping the weight much faster than it was lifted skips the
+        // lowering half of the work and gives the elbow a sharper stretch at
+        // the bottom.
+        id: 'lowering',
+        cue: 'lowerTime', // coaching cue shown when this flags (key in `cues`)
+        label: 'Controlled lowering',
+        short: 'lowering much faster than lifting',
+        measure: 'tempo',
+        window: 'rep',
+        joints: ['Shoulder', 'Elbow', 'Wrist'],
+        unit: '%',
+        decimals: 0,
+        worse: 'below',
+        ideal: 100,
+        yellow: 50, // lowering in under half the lifting time
+        says: 'Lowering took {value} of the lifting time',
+        limitText: 'aim for {limit} or more',
+      },
+    ],
   },
 
   metrics: {

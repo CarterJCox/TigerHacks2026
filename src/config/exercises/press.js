@@ -64,6 +64,117 @@ export default {
 
   scoring: { penaltyPerMajor: 30, yellowBelow: 85, redBelow: 60, sustainReps: 2 },
 
+  // Form standards: fixed limits for every rep. See curl.js for the fields.
+  // Not checked from a front view:
+  //   - Elbows flaring out at the bottom. Flared elbows and elbows angled
+  //     slightly forward differ by only about 15% in how wide they look from
+  //     the front. That is within 2-D pose error and differences in body
+  //     proportions, and the pose model's depth estimate isn't reliable
+  //     enough to help. A red flag here would too often be wrong.
+  //   - Arching the lower back: it happens front-to-back, out of this view.
+  standards: {
+    holdSec: 0.2,
+    minVisibility: 0.7,
+    minClearFraction: 0.8,
+    // Shown in the Details drawer under the form standards.
+    notChecked: [
+      'Elbows flaring out at the bottom: from the front, flared and slightly forward elbows differ too little to tell apart reliably.',
+      'Arching the lower back: happens front-to-back, out of this view.',
+    ],
+    rules: [
+      {
+        // Bending sideways under the dumbbells loads the lower back and one
+        // shoulder more than the other. Measured from each rep's start, so a
+        // slightly tilted camera doesn't count.
+        id: 'sideLean',
+        cue: 'lateralLean', // coaching cue shown when this flags (key in `cues`)
+        label: 'Side lean',
+        short: 'leaning to one side',
+        series: 'lateralLean',
+        measure: 'sway',
+        window: 'rep',
+        joints: ['Shoulder', 'Hip'],
+        unit: '°',
+        decimals: 0,
+        worse: 'above',
+        ideal: 0,
+        red: 10, // a clear side bend to get the weight up
+        says: 'Torso leaned {value} to one side while pressing',
+      },
+      {
+        // Stopping the dumbbells well above the shoulders skips the bottom of
+        // the press, where the shoulders work through their longest range.
+        id: 'bottomDepth',
+        cue: 'rom', // coaching cue shown when this flags (key in `cues`)
+        label: 'Lowering to shoulder level',
+        short: 'dumbbells stopping above shoulder level',
+        series: 'elbowRise',
+        measure: 'min',
+        window: 'reach',
+        joints: ['Shoulder', 'Elbow'],
+        unit: '% torso',
+        decimals: 0,
+        worse: 'above',
+        ideal: -10,
+        yellow: 15, // elbows staying 15% of torso length above the shoulders
+        says: 'Elbows stayed {value} above your shoulders at the bottom',
+      },
+      {
+        // Stopping well short of straight arms leaves out the top of the press.
+        id: 'lockout',
+        cue: 'rom', // coaching cue shown when this flags (key in `cues`)
+        label: 'Near lockout at the top',
+        short: 'stopping short of lockout',
+        series: 'elbowAngleMean',
+        measure: 'max',
+        window: 'rep',
+        joints: ['Shoulder', 'Elbow', 'Wrist'],
+        unit: '°',
+        decimals: 0,
+        worse: 'below',
+        ideal: 170,
+        yellow: 145,
+        says: 'Elbows extended to only {value} at the top',
+        limitText: 'aim for {limit} or more',
+      },
+      {
+        // One arm trailing means the two sides aren't sharing the work evenly.
+        id: 'armLag',
+        cue: 'heightAsym', // coaching cue shown when this flags (key in `cues`)
+        label: 'Arms moving together',
+        short: 'one arm lagging',
+        series: 'wristGap',
+        measure: 'max',
+        window: 'rep',
+        joints: ['Shoulder', 'Wrist'],
+        unit: '% torso',
+        decimals: 0,
+        worse: 'above',
+        ideal: 0,
+        yellow: 15, // a height gap of 15% of torso length, held for 0.2 s
+        says: 'One arm trailed the other by {value}',
+      },
+      {
+        // Dropping the dumbbells much faster than they were pressed gives up
+        // control at the bottom, where the shoulder is most loaded.
+        id: 'lowering',
+        cue: 'lowerTime', // coaching cue shown when this flags (key in `cues`)
+        label: 'Controlled lowering',
+        short: 'lowering much faster than pressing',
+        measure: 'tempo',
+        window: 'rep',
+        joints: ['Shoulder', 'Elbow', 'Wrist'],
+        unit: '%',
+        decimals: 0,
+        worse: 'below',
+        ideal: 100,
+        yellow: 50, // lowering in under half the pressing time
+        says: 'Lowering took {value} of the pressing time',
+        limitText: 'aim for {limit} or more',
+      },
+    ],
+  },
+
   metrics: {
     rom: {
       label: 'Pressing range',

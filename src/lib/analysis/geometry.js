@@ -79,6 +79,55 @@ export function rangeIn(arr, a, b) {
   return Number.isFinite(hi) && Number.isFinite(lo) ? hi - lo : NaN;
 }
 
+/**
+ * The highest level the series held for k consecutive frames within [a, b]:
+ * the best k-frame window, scored by its lowest value. A missing (NaN) frame
+ * breaks a window, so a one-frame spike or a gap can never produce the value.
+ * Returns { value, at } where `at` is the window's first frame (-1 if none).
+ */
+export function heldMax(arr, a, b, k) {
+  let best = -Infinity;
+  let at = -1;
+  for (let i = Math.max(0, a); i + k - 1 <= b; i++) {
+    let m = Infinity;
+    for (let j = i; j < i + k; j++) {
+      const v = arr[j];
+      if (!Number.isFinite(v)) {
+        m = NaN;
+        break;
+      }
+      if (v < m) m = v;
+    }
+    if (m > best) {
+      best = m;
+      at = i;
+    }
+  }
+  return at < 0 ? { value: NaN, at: -1 } : { value: best, at };
+}
+
+/** The lowest level held for k consecutive frames within [a, b]. See heldMax. */
+export function heldMin(arr, a, b, k) {
+  let best = Infinity;
+  let at = -1;
+  for (let i = Math.max(0, a); i + k - 1 <= b; i++) {
+    let m = -Infinity;
+    for (let j = i; j < i + k; j++) {
+      const v = arr[j];
+      if (!Number.isFinite(v)) {
+        m = NaN;
+        break;
+      }
+      if (v > m) m = v;
+    }
+    if (m < best) {
+      best = m;
+      at = i;
+    }
+  }
+  return at < 0 ? { value: NaN, at: -1 } : { value: best, at };
+}
+
 /** Value at i, or the nearest finite value within `reach` frames. */
 export function valueNear(arr, i, reach = 3) {
   if (Number.isFinite(arr[i])) return arr[i];

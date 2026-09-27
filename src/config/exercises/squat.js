@@ -58,6 +58,86 @@ export default {
 
   scoring: { penaltyPerMajor: 30, yellowBelow: 85, redBelow: 60, sustainReps: 2 },
 
+  // Form standards: fixed limits for every rep. See curl.js for the fields.
+  // Not checked from a side view:
+  //   - Knees caving in: that movement is side to side, so it can only be
+  //     seen from the front.
+  //   - Heels lifting: heel and toe are the least stable points the pose
+  //     model tracks, and the far foot often overlaps the near one, so a red
+  //     flag would too often be wrong.
+  //   - Bouncing out of the bottom: the rebound lasts 1-3 frames at 15 frames
+  //     per second and can't be told apart from a normal turnaround. A fast
+  //     drop into the bottom is caught by the descent check.
+  standards: {
+    holdSec: 0.2,
+    minVisibility: 0.7,
+    minClearFraction: 0.8,
+    // Shown in the Details drawer under the form standards.
+    notChecked: [
+      'Knees caving in: only visible from the front.',
+      'Heels lifting: foot points are the least stable the pose model tracks.',
+      'Bouncing out of the bottom: too brief to separate from a normal turnaround at 15 frames per second.',
+    ],
+    rules: [
+      {
+        // Torso and shins roughly parallel keeps the load shared between hips
+        // and knees. Leaning far past the shin angle turns the squat into a
+        // good-morning and moves the load onto the lower back. Comparing with
+        // the shins scales the limit to depth: deeper squats tilt both more.
+        id: 'excessLean',
+        cue: 'forwardLean', // coaching cue shown when this flags (key in `cues`)
+        label: 'Forward lean for the depth',
+        short: 'chest dropping forward',
+        series: 'leanOverShin',
+        measure: 'max',
+        window: 'rep',
+        joints: ['Shoulder', 'Hip', 'Knee', 'Ankle'],
+        unit: '°',
+        decimals: 0,
+        worse: 'above',
+        ideal: 0,
+        red: 30,
+        says: 'Torso leaned {value} further forward than your shins',
+      },
+      {
+        // Stopping well above parallel leaves out the deep part of the squat,
+        // where the glutes and quads work hardest.
+        id: 'depth',
+        cue: 'depth', // coaching cue shown when this flags (key in `cues`)
+        label: 'Depth',
+        short: 'shallow depth',
+        series: 'thighRise',
+        measure: 'min',
+        window: 'rep',
+        joints: ['Hip', 'Knee'],
+        unit: '°',
+        decimals: 0,
+        worse: 'above',
+        ideal: 0,
+        yellow: 30, // thighs more than 30° above parallel: about a half squat
+        says: 'Thighs stayed {value} above parallel at the bottom',
+      },
+      {
+        // Dropping into the bottom much faster than standing up gives up
+        // control where the knees and hips are most loaded.
+        id: 'lowering',
+        cue: 'lowerTime', // coaching cue shown when this flags (key in `cues`)
+        label: 'Controlled descent',
+        short: 'dropping into the bottom',
+        measure: 'tempo',
+        window: 'rep',
+        joints: ['Hip', 'Knee', 'Ankle'],
+        unit: '%',
+        decimals: 0,
+        worse: 'below',
+        ideal: 100,
+        yellow: 50,
+        says: 'The descent took {value} of the time it took to stand up',
+        limitText: 'aim for {limit} or more',
+      },
+    ],
+  },
+
   metrics: {
     rom: {
       label: 'Depth (knee bend)',
@@ -197,6 +277,7 @@ export default {
   ],
 
   cues: {
+    depth: 'Sit down until your thighs are close to parallel with the floor, as long as it stays comfortable.',
     forwardLean: 'Keep your chest up as you sit down between your hips.',
     hipsRiseFirst: 'Drive up so your hips and chest rise together.',
     heelLift: 'Keep your whole foot, heel included, pressed into the floor.',

@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { getExercise } from '../config/exercises/index.js';
 import { useWidth } from './useWidth.js';
-import { STATUS } from './status.js';
+import { SEVERITY, severityOf } from './status.js';
 import { useMetricHover } from './highlight.js';
 import { fmt, fmtDelta, unitLabel } from '../lib/report/format.js';
 
 const H = 240;
 const PAD = { top: 30, right: 14, bottom: 46, left: 44 };
 const LEVEL_COLOR = { ok: 'var(--good)', notable: 'var(--warn)', major: 'var(--bad)', na: 'var(--unknown)' };
-const LEVEL_LABEL = { ok: 'Within baseline', notable: 'Notable change', major: 'Major change', na: 'Not measured' };
+const LEVEL_LABEL = { ok: "Within your first reps' range", notable: 'Notable change', major: 'Major change', na: 'Not measured' };
 
 function niceTicks(lo, hi, count = 4) {
   const span = hi - lo || 1;
@@ -77,12 +77,12 @@ export default function RepChart({ analysis, selectedRep, onRep }) {
       ? {
           title: `Rep ${hoverRep.index}`,
           value: hoverRep.score != null ? `${hoverRep.score}` : 'Not scored',
-          sub: hoverRep.isBaseline ? 'Baseline rep' : (STATUS[hoverRep.status] || STATUS.unknown).label,
+          sub: `${hoverRep.isBaseline ? 'First rep · ' : ''}${severityOf(hoverRep).label}`,
         }
       : {
           title: `Rep ${hoverRep.index}`,
           value: fmt(hoverRep.metrics[mode], def),
-          sub: `Baseline ${fmt(stat.mean, def)} · ${fmtDelta(hoverRep.deviations[mode], def)} · ${LEVEL_LABEL[hoverRep.deviations[mode]?.level] || ''}`,
+          sub: `First reps ${fmt(stat.mean, def)} · ${fmtDelta(hoverRep.deviations[mode], def)} · ${LEVEL_LABEL[hoverRep.deviations[mode]?.level] || ''}`,
         }
     : null;
 
@@ -101,7 +101,7 @@ export default function RepChart({ analysis, selectedRep, onRep }) {
           <h3>{mode === 'score' ? 'Form quality by rep' : cfg.metrics[mode].label}</h3>
           <p className="muted small">
             {mode === 'score'
-              ? 'Score out of 100: how closely each rep matched your baseline reps.'
+              ? 'Consistency score out of 100: how closely each rep matched your first reps.'
               : `${cfg.metrics[mode].description} In ${unitLabel(cfg.metrics[mode])}.`}
           </p>
         </div>
@@ -125,7 +125,7 @@ export default function RepChart({ analysis, selectedRep, onRep }) {
           if (mode !== 'score') metricHover(mode).onMouseLeave();
         }}
       >
-        <svg width={width} height={H} role="img" aria-label={mode === 'score' ? 'Bar chart of form score for each rep' : `Line chart of ${cfg.metrics[mode].label} for each rep against the baseline`}>
+        <svg width={width} height={H} role="img" aria-label={mode === 'score' ? 'Bar chart of form score for each rep' : `Line chart of ${cfg.metrics[mode].label} for each rep against your first reps`}>
           {/* Grid + y ticks */}
           {ticks.map((t) => (
             <g key={t}>
@@ -169,7 +169,7 @@ export default function RepChart({ analysis, selectedRep, onRep }) {
                 <path
                   key={r.index}
                   d={d}
-                  fill={(STATUS[r.status] || STATUS.unknown).color}
+                  fill={severityOf(r).color}
                   className={`bar ${hover === i ? 'is-hover' : ''} ${selectedRep === r.index ? 'is-selected' : ''}`}
                 />
               );
@@ -204,7 +204,7 @@ export default function RepChart({ analysis, selectedRep, onRep }) {
             <g className="baseline-bracket">
               <path d={`M${cx(bFirst) - band * 0.4},${PAD.top + innerH + 24} v5 H${cx(bLast) + band * 0.4} v-5`} />
               <text x={(cx(bFirst) + cx(bLast)) / 2} y={PAD.top + innerH + 42} textAnchor="middle">
-                Baseline
+                First reps
               </text>
             </g>
           )}
@@ -250,11 +250,11 @@ export default function RepChart({ analysis, selectedRep, onRep }) {
       <div className="chart-legend" aria-hidden={mode !== 'score'}>
         {mode === 'score'
           ? ['green', 'yellow', 'red', 'unknown']
-              .filter((s) => reps.some((r) => r.status === s))
+              .filter((s) => reps.some((r) => (r.scorable ? r.severity : 'unknown') === s))
               .map((s) => (
                 <span key={s}>
-                  <i style={{ background: STATUS[s].color }} />
-                  {STATUS[s].label}
+                  <i style={{ background: SEVERITY[s].color }} />
+                  {SEVERITY[s].label}
                 </span>
               ))
           : [
@@ -268,11 +268,11 @@ export default function RepChart({ analysis, selectedRep, onRep }) {
                 )),
               <span key="avg">
                 <i className="line" />
-                Baseline average {fmt(stat.mean, def)}
+                First reps' average {fmt(stat.mean, def)}
               </span>,
               <span key="band">
                 <i className="band" />
-                Baseline range plus allowed drift
+                First reps' range plus allowed drift
               </span>,
             ]}
       </div>

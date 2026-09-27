@@ -3,7 +3,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { drawVideoFrame } from '../lib/video/frame.js';
-import { STATUS, repAt } from './status.js';
+import { severityOf, repAt } from './status.js';
 import { drawSkeleton, fitCanvas, overlayColors } from './overlay.js';
 
 const LEAD_IN = 0.2; // seconds shown before a rep starts
@@ -155,12 +155,12 @@ const FullPlayer = forwardRef(function FullPlayer(
           const ctx = c.getContext('2d');
           drawVideoFrame(ctx, v, rotation, c.width, c.height);
           if (showSkeleton) {
-            const rep = repAt(reps, t);
             drawSkeleton(ctx, analysis, t, {
               scale: c.width / analysis.width,
               dpr: c.width / parseFloat(c.style.width || c.width),
               colors,
-              statusColor: rep ? colors[rep.status] || colors.unknown : colors.neutral,
+              // Neutral skeleton; form issues tint their own segments while they happen.
+              statusColor: colors.neutral,
               highlight,
             });
           }
@@ -180,7 +180,7 @@ const FullPlayer = forwardRef(function FullPlayer(
   }, [analysis, reps, rotation, showSkeleton, highlight, checkWindow, report]);
 
   const current = repAt(reps, time);
-  const status = current ? STATUS[current.status] || STATUS.unknown : null;
+  const status = current ? severityOf(current) : null;
 
   return (
     <div className="stage-box" ref={boxRef}>
@@ -188,11 +188,11 @@ const FullPlayer = forwardRef(function FullPlayer(
         <canvas ref={canvasRef} className="stage-canvas" onClick={togglePlay} aria-label="Video with pose overlay. Click to play or pause." />
         {!ready && <div className="stage-loading">Loading video</div>}
         {current && (
-          <div className={`stage-badge s-${current.status}`}>
+          <div className={`stage-badge s-${current.scorable ? current.severity : 'unknown'}`}>
             <span className="badge-dot" aria-hidden="true" />
             Rep {current.index}
             <span className="badge-sep">·</span>
-            {current.isBaseline ? 'Baseline' : current.scorable ? status.label : 'Not scored'}
+            {status.label}
             {loop && selectedRep === current.index && <span className="badge-loop">Looping</span>}
           </div>
         )}

@@ -5,6 +5,15 @@ import { getExercise } from '../../config/exercises/index.js';
 import { fmtDelta, fmtLong, fmtRange, listReps } from './format.js';
 
 const STATUS_WORD = { green: 'Held', yellow: 'Changed', red: 'Broke down', unknown: 'Not scored' };
+const SEVERITY_WORD = { green: 'Good form', yellow: 'Less effective for building muscle', red: 'Injury risk', unknown: 'Not scored' };
+const SEVERITY_SHORT = { green: 'Good form', yellow: 'Less effective', red: 'Injury risk', unknown: 'Not scored' };
+
+/** "Injury risk (gauge 72/100): Torso swung 18° to lift the weight on reps 4–6 (limit 10°)." */
+export function gaugeLine(analysis) {
+  const f = analysis.form;
+  if (!f) return null;
+  return `${SEVERITY_WORD[f.severity] || 'Not scored'}${f.value != null ? ` (gauge ${Math.round(f.value)}/100)` : ''}: ${f.reason.text}`;
+}
 
 function weightText(input) {
   return input.weightLabel || (input.bodyweight ? 'Bodyweight' : `${input.weight} ${input.unit}`);
@@ -42,7 +51,7 @@ export function keyFindings(analysis, limit = 4) {
   return out.slice(0, limit);
 }
 
-/** Baseline vs later-rep numbers for the main metrics, used when nothing crossed a threshold. */
+/** First-rep vs later-rep numbers for the main metrics, used when nothing crossed a threshold. */
 export function keyNumbers(analysis, limit = 3) {
   const cfg = getExercise(analysis.exerciseId);
   const later = analysis.reps.filter((r) => r.scorable && !r.isBaseline);
@@ -53,7 +62,7 @@ export function keyNumbers(analysis, limit = 3) {
       const base = analysis.stats[key]?.mean;
       const vals = later.map((r) => r.metrics[key]).filter(Number.isFinite);
       const span = vals.length ? `${fmtLong(Math.min(...vals), def)} to ${fmtLong(Math.max(...vals), def)} across later reps` : 'no later reps';
-      return `${def.label}: ${fmtLong(base, def)} baseline, ${span}`;
+      return `${def.label}: ${fmtLong(base, def)} on your first reps, ${span}`;
     });
 }
 
@@ -66,21 +75,33 @@ export function buildPlainTextReport(analysis, input, report) {
   lines.push(`Weight: ${weightText(input)}`);
   const partial = analysis.partialReps.length ? `, ${listReps(analysis.partialReps)} partial` : '';
   lines.push(`Reps: ${analysis.reps.length} counted${input.plannedReps ? ` of ${input.plannedReps} planned` : ''}${partial}`);
-  lines.push(`Baseline: ${listReps(analysis.baselineReps)}`);
+  lines.push(`First reps (later reps are compared with these): ${listReps(analysis.baselineReps)}`);
   lines.push(
     `Breakdown rep: ${
       analysis.breakdown ? `rep ${analysis.breakdown.rep} (form ${analysis.breakdown.kind === 'breakdown' ? 'broke down' : 'changed'})` : 'none, form held'
     }`,
   );
-  lines.push(`Set score: ${analysis.setScore ?? '-'} / 100`);
+  lines.push(`Consistency score: ${analysis.setScore ?? '-'} / 100`);
+  if (analysis.form) lines.push(`Form gauge: ${gaugeLine(analysis)}`);
   lines.push('');
   lines.push(report.headline);
   lines.push('');
   lines.push(report.summary);
 
+  // Form standards: injury risk first, then less effective for building muscle.
+  const flags = analysis.form?.flags ?? [];
+  if (flags.length) {
+    lines.push('');
+    lines.push('Form standards (fixed limits, every rep)');
+    flags.forEach((f) => lines.push(`- ${f.severity === 'red' ? 'Injury risk' : 'Less effective for building muscle'}: ${f.text}`));
+  }
+  if (analysis.form?.skipped.length) {
+    lines.push(`- Not checked where tracking was unclear: ${analysis.form.skipped.map((s) => `${s.label.toLowerCase()} (${listReps(s.reps)})`).join(', ')}`);
+  }
+
   const findings = keyFindings(analysis, 6);
   lines.push('');
-  lines.push(findings.length ? 'Key findings' : 'Key numbers');
+  lines.push(findings.length ? 'Key findings (compared with your first reps)' : 'Key numbers');
   (findings.length ? findings : keyNumbers(analysis)).forEach((f) => lines.push(`- ${f}`));
   if (analysis.risks.length) {
     lines.push('');
@@ -97,9 +118,10 @@ export function buildPlainTextReport(analysis, input, report) {
   lines.push('Rep by rep');
   const keys = Object.keys(cfg.metrics);
   for (const r of analysis.reps) {
-    const status = r.isBaseline ? 'Baseline' : STATUS_WORD[r.status] || r.status;
+    const severity = SEVERITY_SHORT[r.scorable ? r.severity : 'unknown'];
+    const vsFirst = r.scorable ? (r.isBaseline ? 'one of your first reps' : `vs first reps ${STATUS_WORD[r.status].toLowerCase()}`) : null;
     const vals = keys.map((k) => `${cfg.metrics[k].short} ${fmtLong(r.metrics[k], cfg.metrics[k])}`).join(', ');
-    lines.push(`Rep ${r.index}: ${status}${r.score != null ? `, score ${r.score}` : ''}${r.partial ? ', partial' : ''}. ${vals}`);
+    lines.push(`Rep ${r.index}: ${severity}${vsFirst ? ` (${vsFirst}${r.score != null ? `, consistency ${r.score}` : ''})` : ''}${r.partial ? ', partial' : ''}. ${vals}`);
   }
   if (input.painReported) {
     lines.push('');
@@ -166,7 +188,61 @@ function rrect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-/** Draws the results summary (headline, per-rep chart, key metrics) and returns a PNG blob. */
+/** The form gauge on the image: three zones, the reading's zone lit, and the needle. */
+function drawGauge(ctx, cx, cy, r, form, C, body) {
+  const zones = [
+    ['green', 0, 1 / 3, 'Good form'],
+    ['yellow', 1 / 3, 2 / 3, 'Less effective'],
+    ['red', 2 / 3, 1, 'Injury risk'],
+  ];
+  const ang = (t) => Math.PI * (1 + t); // canvas angles: PI is left, 2 PI is right, over the top
+  ctx.lineWidth = 16;
+  ctx.lineCap = 'butt';
+  for (const [id, a, b] of zones) {
+    ctx.globalAlpha = id === form.severity ? 1 : 0.22;
+    ctx.strokeStyle = C[id];
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, ang(a + (a > 0 ? 0.012 : 0)), ang(b - (b < 1 ? 0.012 : 0)));
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.font = `700 11px ${body}`;
+  ctx.textAlign = 'center';
+  for (const [id, a, b, label] of zones) {
+    const t = ang((a + b) / 2);
+    ctx.fillStyle = id === form.severity ? C[id] : C.muted;
+    ctx.save();
+    ctx.translate(cx + Math.cos(t) * (r + 22), cy + Math.sin(t) * (r + 22));
+    ctx.rotate(t + Math.PI / 2);
+    ctx.fillText(label.toUpperCase(), 0, 4);
+    ctx.restore();
+  }
+  if (form.value != null) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(Math.PI * (form.value / 100));
+    ctx.fillStyle = C.text;
+    ctx.beginPath();
+    ctx.moveTo(-(r - 18), 0);
+    ctx.lineTo(0, -4.5);
+    ctx.lineTo(12, 0);
+    ctx.lineTo(0, 4.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.fillStyle = C.text;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 8.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = C.bg;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.textAlign = 'left';
+}
+
+/** Draws the results summary (headline, form gauge, per-rep chart, key metrics) and returns a PNG blob. */
 export async function renderSummaryImage(analysis, input, report) {
   const cfg = getExercise(analysis.exerciseId);
   const display = '"Bricolage Grotesque Variable", system-ui, sans-serif';
@@ -203,7 +279,7 @@ export async function renderSummaryImage(analysis, input, report) {
   const findingsTitle = found.length ? 'Key findings' : 'Key numbers';
   const cues = input.painReported ? [] : report.cues.slice(0, 2);
   // Drawn on a generously tall canvas, then cropped to the content.
-  const H = 1600 + headLines.length * 50;
+  const H = 1800 + headLines.length * 50;
 
   const canvas = document.createElement('canvas');
   canvas.width = W * scale;
@@ -252,12 +328,32 @@ export async function renderSummaryImage(analysis, input, report) {
   }
   y += 34;
 
+  // Form gauge: the whole-set reading and its main reason.
+  if (analysis.form) {
+    drawGauge(ctx, pad + 130, y + 138, 104, analysis.form, C, body);
+    const tx = pad + 300;
+    ctx.font = `650 30px ${display}`;
+    ctx.fillStyle = C[analysis.form.severity] || C.text;
+    ctx.fillText(SEVERITY_WORD[analysis.form.severity] || 'Not scored', tx, y + 62);
+    ctx.font = `500 19px ${body}`;
+    ctx.fillStyle = C.text2;
+    let ry = y + 98;
+    for (const l of wrap(ctx, analysis.form.reason.text, inner - 300)) {
+      ctx.fillText(l, tx, ry);
+      ry += 28;
+    }
+    ctx.font = `500 13px ${body}`;
+    ctx.fillStyle = C.muted;
+    ctx.fillText('Whole set: fixed form limits, plus changes from your first reps.', tx, Math.max(ry + 8, y + 150));
+    y += 190;
+  }
+
   // Stat tiles
   const stats = [
     ['Reps counted', `${analysis.reps.length}`, input.plannedReps ? `of ${input.plannedReps} planned` : ''],
-    ['Form held through', analysis.breakdown ? `Rep ${analysis.breakdown.rep - 1}` : 'Every rep', analysis.breakdown ? `changed at rep ${analysis.breakdown.rep}` : ''],
-    ['Set score', `${analysis.setScore ?? '-'}`, 'average of scored reps'],
-    ['Baseline', listReps(analysis.baselineReps).replace(/^reps? /, ''), 'first clean reps'],
+    ['Consistent through', analysis.breakdown ? `Rep ${analysis.breakdown.rep - 1}` : 'Every rep', analysis.breakdown ? `changed at rep ${analysis.breakdown.rep}` : ''],
+    ['Consistency', `${analysis.setScore ?? '-'}`, 'vs your first reps, out of 100'],
+    ['First reps', listReps(analysis.baselineReps).replace(/^reps? /, ''), 'what later reps are compared with'],
   ];
   const gap = 16;
   const tileW = (inner - gap * 3) / 4;
@@ -281,10 +377,10 @@ export async function renderSummaryImage(analysis, input, report) {
   // Per-rep chart
   ctx.font = `650 20px ${display}`;
   ctx.fillStyle = C.text;
-  ctx.fillText('Form quality by rep', pad, y);
+  ctx.fillText('Consistency by rep', pad, y);
   ctx.font = `500 14px ${body}`;
   ctx.fillStyle = C.muted;
-  ctx.fillText('Score out of 100 compared with your baseline reps', pad + 220, y);
+  ctx.fillText('Score out of 100 against your first reps. Colour shows form severity.', pad + 200, y);
   y += 36;
   const chartH = 190;
   const left = pad + 36;
@@ -308,7 +404,7 @@ export async function renderSummaryImage(analysis, input, report) {
   const bw = Math.min(28, band * 0.6);
   analysis.reps.forEach((r, i) => {
     const cx = left + band * (i + 0.5);
-    const color = C[r.status] || C.unknown;
+    const color = C[r.scorable ? r.severity : 'unknown'] || C.unknown;
     if (r.score != null) {
       const h = Math.max(4, (r.score / 100) * chartH);
       const top = y + chartH - h;
@@ -348,14 +444,14 @@ export async function renderSummaryImage(analysis, input, report) {
   let lx = left;
   const ly = y + chartH + 46;
   for (const s of ['green', 'yellow', 'red', 'unknown']) {
-    if (!analysis.reps.some((r) => r.status === s)) continue;
+    if (!analysis.reps.some((r) => (r.scorable ? r.severity : 'unknown') === s)) continue;
     ctx.fillStyle = C[s];
     rrect(ctx, lx, ly - 10, 12, 12, 3);
     ctx.fill();
     ctx.font = `500 13px ${body}`;
     ctx.fillStyle = C.text2;
-    ctx.fillText(STATUS_WORD[s], lx + 18, ly);
-    lx += ctx.measureText(STATUS_WORD[s]).width + 44;
+    ctx.fillText(SEVERITY_SHORT[s], lx + 18, ly);
+    lx += ctx.measureText(SEVERITY_SHORT[s]).width + 44;
   }
   y += 250 + 36;
 

@@ -69,6 +69,48 @@ export function highlightFor(analysis, metricKey) {
   return set;
 }
 
+// Landmarks of each form rule's joints, per analysis (side views use the measured side).
+const ruleJointCache = new WeakMap();
+function ruleJoints(analysis, ruleId) {
+  let byRule = ruleJointCache.get(analysis);
+  if (!byRule) {
+    byRule = {};
+    const cfg = getExercise(analysis.exerciseId);
+    const sides = analysis.ctx.view === 'side' ? [analysis.ctx.side] : ['left', 'right'];
+    for (const rule of cfg.standards?.rules ?? []) {
+      byRule[rule.id] = new Set(sides.flatMap((s) => rule.joints.map((p) => LM[`${s}${p}`]).filter((j) => j !== undefined)));
+    }
+    ruleJointCache.set(analysis, byRule);
+  }
+  return byRule[ruleId] ?? new Set();
+}
+
+const TINT_FADE = 2; // frames to fade a tint in and out
+const TINT_RANK = { yellow: 1, red: 2 };
+
+/**
+ * Form-standard flags active at fractional frame fi, each with the joints to
+ * tint and an alpha that fades in and out at the edges of the flagged frames.
+ */
+export function activeTints(analysis, fi) {
+  const out = [];
+  for (const t of analysis.form?.tints ?? []) {
+    if (fi < t.i0 - TINT_FADE || fi > t.i1 + TINT_FADE) continue;
+    const edge = fi < t.i0 ? (fi - (t.i0 - TINT_FADE)) / TINT_FADE : fi > t.i1 ? (t.i1 + TINT_FADE - fi) / TINT_FADE : 1;
+    out.push({ severity: t.severity, alpha: Math.max(0, Math.min(1, edge)), joints: ruleJoints(analysis, t.ruleId) });
+  }
+  return out;
+}
+
+function tintFor(tints, a, b) {
+  let best = null;
+  for (const t of tints) {
+    if (!t.joints.has(a) || !t.joints.has(b)) continue;
+    if (!best || TINT_RANK[t.severity] > TINT_RANK[best.severity] || (t.severity === best.severity && t.alpha > best.alpha)) best = t;
+  }
+  return best;
+}
+
 function line(ctx, a, b) {
   ctx.beginPath();
   ctx.moveTo(a.x, a.y);
@@ -95,6 +137,9 @@ export function drawSkeleton(ctx, analysis, t, opts) {
   const nearSide = body.view === 'side' ? body.side : null;
   const isNear = (j) => !nearSide || (NAME_OF[j] || '').startsWith(nearSide);
   const lit = (j) => Boolean(highlight?.has(j));
+  // While a form issue is happening, its segments take the flag's colour.
+  // Hovering a metric takes over the overlay, so tints step aside then.
+  const tints = highlight ? [] : activeTints(analysis, fi);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
@@ -114,6 +159,18 @@ export function drawSkeleton(ctx, analysis, t, opts) {
       ctx.strokeStyle = on ? colors.accent : highlight ? colors.dim : near ? statusColor : colors.far;
       ctx.lineWidth = (on ? 5 : near ? 3 : 2) * dpr;
       line(ctx, pa, pb);
+      const tint = tintFor(tints, a, b);
+      if (tint && tint.alpha > 0) {
+        ctx.save();
+        ctx.strokeStyle = colors[tint.severity];
+        ctx.globalAlpha = 0.22 * tint.alpha;
+        ctx.lineWidth = (near ? 11 : 8) * dpr;
+        line(ctx, pa, pb);
+        ctx.globalAlpha = 0.95 * tint.alpha;
+        ctx.lineWidth = (near ? 3.5 : 2.5) * dpr;
+        line(ctx, pa, pb);
+        ctx.restore();
+      }
     }
   }
   // Segments that aren't part of the drawn skeleton but are measured (ear to shoulder for shrugs).

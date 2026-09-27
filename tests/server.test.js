@@ -87,7 +87,7 @@ describe('report endpoint', () => {
   it('returns a validated Claude report built only from metrics', async () => {
     const c = payload.breakdown.causes[0];
     nextReply = {
-      headline: `Form held for reps 1-5 and changed at rep 6: ${c.label.toLowerCase()} went from ${c.baseline} to ${c.value}.`,
+      headline: `Form held for reps 1-5 and changed at rep 6: ${c.label.toLowerCase()} went from ${c.firstRepsAverage} to ${c.value}.`,
       summary: 'Reps 1-3 were your baseline. The later reps moved differently.',
       cues: ['Keep your elbows pinned to your sides.'],
     };
@@ -98,7 +98,8 @@ describe('report endpoint', () => {
       expect(out.headline).toContain('rep 6');
     });
     const req = seen[0];
-    expect(req.body.model).toBe('claude-opus-5');
+    expect(req.body.model).toBe('claude-sonnet-5');
+    expect(req.body.output_config.effort).toBe('low');
     expect(req.body.output_config.format.type).toBe('json_schema');
     expect(req.body.fallbacks).toBe('default');
     expect(req.headers['anthropic-beta']).toContain('server-side-fallback-2026-07-01');

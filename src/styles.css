@@ -2422,6 +2422,142 @@ td.lvl-major .cell-delta {
   background: var(--surface-2);
 }
 
+/* form gauge (top of the side panel) */
+
+.gauge {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.gauge-dial {
+  position: relative;
+}
+
+.gauge-dial svg {
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  height: auto;
+  margin: 0 auto;
+  overflow: visible;
+}
+
+.gauge-zone path {
+  opacity: 0.2;
+  transition: opacity 0.5s var(--ease);
+}
+
+.gauge-zone.is-on path {
+  opacity: 1;
+}
+
+.gauge-label {
+  font-family: var(--font-body);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  fill: var(--muted);
+  transition: fill 0.5s var(--ease);
+}
+
+.gauge-needle {
+  fill: var(--text);
+  transition:
+    transform 0.8s cubic-bezier(0.3, 1.2, 0.5, 1),
+    opacity 0.3s;
+}
+
+.gauge-hub {
+  fill: var(--text);
+}
+
+.gauge-hub-dot {
+  fill: var(--bg);
+}
+
+.gauge-caption {
+  font-family: var(--font-body);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  fill: var(--text-2);
+}
+
+.gauge-reason {
+  font-family: var(--font-display);
+  font-size: 16.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.32;
+  text-align: center;
+  text-wrap: balance;
+  color: var(--text);
+}
+
+.gauge-reset {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 7px;
+  border-radius: 7px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.gauge-reset:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gauge-needle,
+  .gauge-zone path,
+  .gauge-label {
+    transition: none;
+  }
+}
+
+/* form standards table (details drawer) */
+
+.std-limits {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.std-limit {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-2);
+}
+
+.std-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  vertical-align: 0.05em;
+}
+
+.std-y {
+  background: var(--warn);
+}
+
+.std-r {
+  background: var(--bad);
+}
+
 /* side panel */
 
 .side {
@@ -2891,7 +3027,7 @@ td.lvl-major .cell-delta {
 @media (max-height: 820px) and (min-width: 981px) {
   .side {
     padding-top: 2px;
-    gap: 14px;
+    gap: 10px;
   }
   .side-score {
     font-size: 38px;
@@ -2910,6 +3046,16 @@ td.lvl-major .cell-delta {
   }
   .side-cue {
     font-size: 16px;
+  }
+  .gauge-dial svg {
+    max-width: 212px;
+  }
+  .gauge-reason {
+    font-size: 14.5px;
+  }
+  .side-foot p + p,
+  .side-head .side-note {
+    display: none;
   }
   .risk-body {
     display: none;

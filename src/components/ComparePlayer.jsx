@@ -1,19 +1,17 @@
-// Baseline rep on the left, selected rep on the right, same size as the
+// One of the first reps on the left, the selected rep on the right, same size as the
 // full-set view, started together from the beginning of each rep.
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { drawVideoFrame, seekVideo } from '../lib/video/frame.js';
 import { bodyRegion, drawSkeleton, fitCanvas, overlayColors } from './overlay.js';
-import { STATUS } from './status.js';
+import { severityOf } from './status.js';
 
 const LEAD = 0.15;
 const GAP = 14;
 
 function repLabel(rep, isLeft) {
-  if (isLeft) return 'Baseline';
-  if (rep.isBaseline) return 'Baseline rep';
-  if (!rep.scorable) return 'Not scored';
-  return (STATUS[rep.status] || STATUS.unknown).label;
+  const label = severityOf(rep).label;
+  return isLeft || rep.isBaseline ? `First reps · ${label}` : label;
 }
 
 const ComparePlayer = forwardRef(function ComparePlayer(
@@ -187,7 +185,7 @@ const ComparePlayer = forwardRef(function ComparePlayer(
           origin: { x: region.x, y: region.y },
           dpr: canvas.width / parseFloat(canvas.style.width || canvas.width),
           colors,
-          statusColor: colors[rep.status] || colors.unknown,
+          statusColor: colors.neutral,
           highlight,
         });
       }
@@ -206,12 +204,11 @@ const ComparePlayer = forwardRef(function ComparePlayer(
   const pane = (rep, canvasRef, videoRef, isLeft) => (
     <figure className="compare-pane">
       <figcaption className="compare-cap">
-        <span className={`status-pill s-${rep ? rep.status : 'unknown'}`}>
+        <span className={`status-pill s-${rep?.scorable ? rep.severity : 'unknown'}`}>
           <i aria-hidden="true" />
           Rep {rep?.index ?? '–'}
         </span>
         <span className="compare-cap-label">{rep ? repLabel(rep, isLeft) : ''}</span>
-        {rep?.score != null && <span className="compare-cap-score">{rep.score}</span>}
       </figcaption>
       <canvas ref={canvasRef} className="stage-canvas" onClick={togglePlay} />
       <video ref={videoRef} src={src} muted playsInline preload="auto" className="player-video" />

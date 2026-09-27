@@ -10,7 +10,8 @@ import { assessQuality, repConfidence, worstLandmarkInRep } from './quality.js';
 import { jointName } from './messages.js';
 import { listReps } from '../report/format.js';
 import { detectReps, phaseTimes } from './reps.js';
-import { scoreSet } from './scoring.js';
+import { scoreSet, pickCues } from './scoring.js';
+import { evaluateStandards } from './standards.js';
 
 function round(v, d = 2) {
   if (!Number.isFinite(v)) return null;
@@ -157,6 +158,19 @@ export function analyzeTrack(track, exerciseId, { painReported = false } = {}) {
   }
 
   const summary = scoreSet(reps, cfg, { painReported });
+  // Second layer: fixed form standards on every scored rep, combined with the
+  // first-reps comparison into one severity per rep. Runs only here, after
+  // every quality gate (including the camera-angle check) has passed.
+  const form = evaluateStandards(reps, series, sm, ctx, cfg, track.fps);
+  // The breakdown point still comes from the first-reps comparison, but it
+  // only reads as "broke down" when a rep in that run is an injury risk.
+  if (summary.breakdown) {
+    const run = reps.filter((r) => r.scorable && r.index >= summary.breakdown.rep).slice(0, cfg.scoring.sustainReps);
+    summary.breakdown.kind = run.some((r) => r.severity === 'red') ? 'breakdown' : 'change';
+  }
+  // Cues follow the same order as the report: red flags, yellow flags, then changes.
+  const formCues = form.flags.map((f) => cfg.standards.rules.find((r) => r.id === f.ruleId)?.cue).filter(Boolean);
+  summary.cues = pickCues(summary.breakdown, summary.risks, reps, cfg, painReported, formCues);
   const partialReps = reps.filter((r) => r.partial).map((r) => r.index);
 
   return {
@@ -166,6 +180,7 @@ export function analyzeTrack(track, exerciseId, { painReported = false } = {}) {
     series,
     reps,
     ...summary,
+    form,
     partialReps,
     detection: { range: round(detection.range, 1), minProminence: round(detection.minProminence, 1) },
   };

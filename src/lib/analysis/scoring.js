@@ -144,9 +144,10 @@ export function findRisks(reps, cfg) {
   return out.sort((a, b) => a.firstRep - b.firstRep || b.worst.severity - a.worst.severity);
 }
 
-export function pickCues(breakdown, risks, reps, cfg, painReported) {
+/** `leading`: cue keys to try first (the form-standard flags, red before yellow). */
+export function pickCues(breakdown, risks, reps, cfg, painReported, leading = []) {
   if (painReported) return [];
-  const order = [];
+  const order = [...leading];
   if (breakdown) order.push(...breakdown.causes.map((c) => c.key));
   order.push(...[...risks].sort((a, b) => b.worst.severity - a.worst.severity).map((r) => r.metric));
   // Any other metric that crossed "notable" somewhere, worst first.

@@ -3,7 +3,7 @@
 // (Compare). Clicking empty space scrubs the video in Full set.
 
 import { useRef } from 'react';
-import { STATUS } from './status.js';
+import { severityOf } from './status.js';
 
 export default function RepStrip({ analysis, mode, time, selectedRep, compareLeft, onRep, onSeek }) {
   const trackRef = useRef(null);
@@ -26,7 +26,7 @@ export default function RepStrip({ analysis, mode, time, selectedRep, compareLef
       <div className="strip-marks" aria-hidden="true">
         {baseline.length > 0 && (
           <span className="strip-baseline" style={{ left: pct(baseline[0].tStart), width: `calc(${pct(baseline[baseline.length - 1].tEnd)} - ${pct(baseline[0].tStart)})` }}>
-            Baseline
+            First reps
           </span>
         )}
         {reps
@@ -56,19 +56,20 @@ export default function RepStrip({ analysis, mode, time, selectedRep, compareLef
           dragging.current = false;
         }}
         role="group"
-        aria-label={mode === 'compare' ? 'Reps. Choose one to compare with your baseline.' : 'Reps. Choose one to play it.'}
+        aria-label={mode === 'compare' ? 'Reps. Choose one to compare with your first reps.' : 'Reps. Choose one to play it.'}
       >
         {reps.map((r) => {
-          const s = STATUS[r.status] || STATUS.unknown;
+          // Colour and label follow the combined severity, the same as the gauge.
+          const s = severityOf(r);
           const why = r.excluded?.text;
-          const label = `Rep ${r.index}: ${r.isBaseline ? 'baseline' : r.scorable ? s.label.toLowerCase() : 'not scored'}${r.score != null ? `, score ${r.score}` : ''}${why ? `. ${why}` : ''}`;
+          const label = `Rep ${r.index}${r.isBaseline ? ' (first reps)' : ''}: ${s.long.toLowerCase()}${why ? `. ${why}` : ''}`;
           return (
             <button
               key={r.index}
               type="button"
               className={[
                 'strip-rep',
-                `s-${r.scorable ? r.status : 'unknown'}`,
+                `s-${r.scorable ? r.severity : 'unknown'}`,
                 selectedRep === r.index ? 'is-selected' : '',
                 mode === 'compare' && compareLeft === r.index ? 'is-left' : '',
                 r.partial ? 'is-partial' : '',

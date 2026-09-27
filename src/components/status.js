@@ -1,9 +1,23 @@
+// First-reps comparison only (rep.status). Shown in the rep table.
 export const STATUS = {
-  green: { label: 'Held', long: 'Within your baseline range', color: 'var(--good)' },
+  green: { label: 'Held', long: 'Within the range of your first reps', color: 'var(--good)' },
   yellow: { label: 'Changed', long: 'Form changed', color: 'var(--warn)' },
   red: { label: 'Broke down', long: 'Form broke down', color: 'var(--bad)' },
   unknown: { label: 'Not scored', long: 'Not scored (unclear or cut off)', color: 'var(--unknown)' },
 };
+
+// Combined severity (rep.severity): the worse of the form standards and the
+// first-reps comparison. This is what the gauge, rep strip and badges show.
+export const SEVERITY = {
+  green: { label: 'Good form', long: 'Good form', color: 'var(--good)' },
+  yellow: { label: 'Less effective', long: 'Less effective for building muscle', color: 'var(--warn)' },
+  red: { label: 'Injury risk', long: 'Injury risk', color: 'var(--bad)' },
+  unknown: { label: 'Not scored', long: 'Not scored (unclear or cut off)', color: 'var(--unknown)' },
+};
+
+export function severityOf(rep) {
+  return SEVERITY[rep?.scorable ? rep.severity : 'unknown'] || SEVERITY.unknown;
+}
 
 export function statusOf(rep) {
   return STATUS[rep?.status] || STATUS.unknown;

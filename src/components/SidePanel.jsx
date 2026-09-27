@@ -1,14 +1,15 @@
-// The slim panel beside the video: the rep in focus, the metrics that moved
-// most against baseline, and a cue or risk factor only when one applies.
+// The slim panel beside the video: the form gauge (whole set, or the rep
+// picked on the strip), then the measures that moved most against the first
+// reps, and a cue when one applies.
 
 import { getExercise } from '../config/exercises/index.js';
-import { fmt, fmtDelta, fmtRange, listReps } from '../lib/report/format.js';
+import { fmt, fmtDelta, listReps } from '../lib/report/format.js';
 import { painNotice } from '../lib/report/template.js';
-import { STATUS } from './status.js';
 import { useMetricHover } from './highlight.js';
 import { repChanges } from './repFocus.js';
+import FormGauge from './FormGauge.jsx';
 
-const LEVEL_TEXT = { ok: 'within baseline range', notable: 'notable change', major: 'major change' };
+const LEVEL_TEXT = { ok: "within your first reps' range", notable: 'notable change', major: 'major change' };
 const PERCENT_UNIT = { '% torso': '% of torso length', '% foot': '% of foot length' };
 
 function MetricRow({ item }) {
@@ -31,57 +32,78 @@ function MetricRow({ item }) {
   );
 }
 
-export default function SidePanel({ analysis, input, rep, reason }) {
+/** The cue for this rep: its worst form flag first, then its biggest change. */
+function repCue(cfg, rep, flagged) {
+  const rules = cfg.standards?.rules ?? [];
+  for (const f of rep.form?.flags ?? []) {
+    const key = f.kind === 'rule' ? rules.find((r) => r.id === f.ruleId)?.cue : f.metric;
+    if (key && cfg.cues[key]) return cfg.cues[key];
+  }
+  return flagged.length ? cfg.cues[flagged[0].key] ?? null : null;
+}
+
+export default function SidePanel({ analysis, input, rep, reason, selectedRep, onWholeSet }) {
   const cfg = getExercise(analysis.exerciseId);
-  const hover = useMetricHover();
-  if (!rep) return <aside className="side" />;
-  const s = STATUS[rep.status] || STATUS.unknown;
-  const changes = rep.scorable ? repChanges(analysis, rep) : [];
+  const picked = selectedRep ? analysis.reps.find((r) => r.index === selectedRep) : null;
+  // The gauge shows the whole set until a rep is picked on the strip.
+  const reading = picked
+    ? picked.form
+      ? { severity: picked.severity, value: picked.form.value, caption: `Rep ${picked.index}`, reason: picked.form.reason.text }
+      : { severity: 'unknown', value: null, caption: `Rep ${picked.index}`, reason: `${picked.excluded?.text || 'This rep could not be measured reliably'}, so it wasn't checked.` }
+    : { severity: analysis.form.severity, value: analysis.form.value, caption: 'Whole set', reason: analysis.form.reason.text };
+
+  const changes = rep?.scorable ? repChanges(analysis, rep) : [];
   const flagged = changes.filter((c) => c.flagged);
-  const cue = !input.painReported && flagged.length ? cfg.cues[flagged[0].key] : null;
-  const risks = analysis.risks.filter((r) => r.reps.includes(rep.index));
-  const title = rep.isBaseline ? 'Baseline rep' : !rep.scorable ? 'Not scored' : s.long;
+  const cue = !input.painReported && rep ? repCue(cfg, rep, flagged) : null;
 
   return (
     <aside className="side" aria-live="polite">
       {input.painReported && <p className="care-note">{painNotice()}</p>}
 
-      <div className="side-head">
-        <p className="side-eyebrow">
-          Rep {rep.index}
-          {reason && <span className="muted"> · {reason}</span>}
-        </p>
-        <div className="side-title">
-          <span className={`status-pill s-${rep.scorable ? rep.status : 'unknown'}`}>
-            <i aria-hidden="true" />
-            {title}
-          </span>
-          {rep.score != null && (
-            <span className="side-score">
-              {rep.score}
-              <span className="side-score-of">/100</span>
-            </span>
-          )}
-        </div>
-        {rep.partial && rep.scorable && <p className="side-note">Partial rep: less than {Math.round(cfg.reps.partialFrac * 100)}% of a typical rep's range.</p>}
-      </div>
+      <FormGauge
+        severity={reading.severity}
+        value={reading.value}
+        caption={reading.caption}
+        reason={reading.reason}
+        action={
+          picked ? (
+            <button type="button" className="gauge-reset" onClick={onWholeSet}>
+              Whole set
+            </button>
+          ) : null
+        }
+      />
 
-      {!rep.scorable ? (
-        <p className="side-note">{rep.excluded?.text || 'This rep could not be measured reliably.'} It is counted but not scored.</p>
-      ) : (
-        <>
-          <p className="side-caption">{rep.isBaseline ? `Compared with the baseline average (${listReps(analysis.baselineReps)})` : 'Biggest changes against your baseline'}</p>
-          {changes.length ? (
-            <ul className="mlist">
-              {changes.map((c) => (
-                <MetricRow key={c.key} item={c} />
-              ))}
-            </ul>
-          ) : (
-            <p className="side-note">Every measure stayed within a few units of your baseline average.</p>
-          )}
-        </>
+      {rep && (
+        <div className="side-head">
+          <p className="side-eyebrow">
+            Rep {rep.index}
+            {rep.partial && rep.scorable && <span className="muted"> · partial</span>}
+            {reason && <span className="muted"> · {reason}</span>}
+          </p>
+          {rep.partial && rep.scorable && <p className="side-note">Partial rep: less than {Math.round(cfg.reps.partialFrac * 100)}% of a typical rep's range.</p>}
+        </div>
       )}
+
+      {rep &&
+        (!rep.scorable ? (
+          <p className="side-note">{rep.excluded?.text || 'This rep could not be measured reliably.'} It is counted but not scored.</p>
+        ) : (
+          <>
+            <p className="side-caption">
+              {rep.isBaseline ? `One of your first reps, against their average (${listReps(analysis.baselineReps)})` : 'Biggest changes from your first reps'}
+            </p>
+            {changes.length ? (
+              <ul className="mlist">
+                {changes.map((c) => (
+                  <MetricRow key={c.key} item={c} />
+                ))}
+              </ul>
+            ) : (
+              <p className="side-note">Every measure stayed within a few units of your first reps' average.</p>
+            )}
+          </>
+        ))}
 
       {cue && (
         <div className="side-block">
@@ -90,25 +112,9 @@ export default function SidePanel({ analysis, input, rep, reason }) {
         </div>
       )}
 
-      {risks.map((r) => {
-        const d = rep.deviations[r.metric];
-        const def = cfg.metrics[r.metric];
-        return (
-          <div key={r.id} className={`side-block risk-note lvl-${d?.level || r.worst.level}`} {...hover(r.metric)}>
-            <p className="side-label">Risk factor</p>
-            <p className="risk-title">{r.title}</p>
-            <p className="risk-line">
-              {def.label}: {fmtRange(d.base, d.value, def)} on rep {rep.index}
-              {r.firstRep !== rep.index ? `, first seen on rep ${r.firstRep}` : ''}
-            </p>
-            <p className="risk-body">{r.text}</p>
-          </div>
-        );
-      })}
-
       <div className="side-foot">
         <p>
-          Set score <strong>{analysis.setScore ?? '–'}</strong> · baseline {listReps(analysis.baselineReps)} ·{' '}
+          Consistency <strong>{analysis.setScore ?? '–'}</strong>/100 · first {listReps(analysis.baselineReps)} ·{' '}
           {analysis.reps.length} of {input.plannedReps || analysis.reps.length} planned reps
         </p>
         <p>Measured from video. Not medical advice and can't diagnose injuries.</p>

@@ -1,6 +1,6 @@
 # Spotter
 
-Spotter compares every rep in a set against your own first reps and shows where, and by how much, your form changed. It reports what happened in the set. It does not prescribe weights, reps or load changes.
+Spotter checks every rep in a set two ways: against fixed form standards for the exercise (so bad form from rep 1 is still caught), and against your own first reps (to show where, and by how much, your form changed). It reports what happened in the set. It does not prescribe weights, reps or load changes.
 
 Video analysis runs entirely in the browser. The video never leaves your machine. Only rounded measurements (no video, images or pose landmarks, and not the weight value) are sent to the optional report endpoint.
 
@@ -24,7 +24,7 @@ cp .env.example .env
 # then set ANTHROPIC_API_KEY=... in .env and restart the dev server
 ```
 
-`SPOTTER_MODEL` overrides the model (default `claude-opus-5`). Every Claude response is checked before it is shown: it is rejected, and the template text is used instead, if it recommends a weight, load, rep or set change, names a diagnosis, or quotes a number that is not in the measurements.
+`SPOTTER_MODEL` overrides the model (default `claude-sonnet-5`; `claude-haiku-4-5-20251001` is faster and cheaper). Every Claude response is checked before it is shown: it is rejected, and the template text is used instead, if it recommends a weight, load, rep or set change, names a diagnosis, says harm is certain, or quotes a number that is not in the measurements.
 
 ### Production build
 
@@ -39,15 +39,16 @@ npm start          # serves dist/ and the report endpoint on http://localhost:87
 npm test
 ```
 
-Covers rep detection, metrics, the breakdown point, quality gates (wrong angle, missing person, cuts, zoom), template wording, the LLM safety checks, the report endpoint against a mock Anthropic API, and the MP4/MOV rotation probe.
+Covers rep detection, metrics, every form standard (clean, red, yellow and low-confidence synthetic sets per exercise), the gauge mapping, the breakdown point, quality gates (wrong angle, missing person, cuts, zoom), template wording, the LLM safety checks, the report endpoint against a mock Anthropic API, and the MP4/MOV rotation probe.
 
 ## Using it
 
-- **Try a sample** on the first screen runs the full analysis on a bundled clip (`public/demo/seated-row.mp4`, a side-view seated row with a resistance band from Pexels). Sample runs are not saved to history. To use your own demo clip, replace the file and update `src/config/sample.js`.
+- **Try a sample** on the first screen runs the full analysis on a bundled clip (`public/demo/seated-row.mp4`, a side-view seated row with a resistance band from Pexels). Sample runs are not saved to history. To use your own demo clip, put it in `public/demo/` and follow the steps at the top of `src/config/sample.js`.
 - **Trim** appears after you upload. Drag the start and end handles to cut dead time; only the kept range is analyzed. Videos up to 10 minutes can be loaded; the analyzed range must be 3 minutes or less.
-- **Results** fit on one screen. The tracked video is the main view; **Full set / Compare** switches between the whole set and your most typical baseline rep side by side with any other rep (both cropped to the joints being measured and started together). The rep strip under the video is the navigation: click a rep to jump to it, or in Compare to put it on the right. Speed (1×, 0.5×, 0.25×), Loop and Skeleton sit with the play controls. <kbd>Space</kbd> plays or pauses; <kbd>←</kbd>/<kbd>→</kbd> move between reps (ignored while typing).
-- The **side panel** shows the rep in focus (the one you picked, else the breakdown rep, else the last scored rep): its score, the 2–3 measures that moved most against baseline, and a cue or risk factor only when that rep triggered one. Hover a measure to highlight the joints it tracks on the video.
-- **Details** (next to the controls) opens a drawer with the written summary, the rep-by-rep table, the per-metric chart and how everything was measured.
+- **Results** fit on one screen. The tracked video is the main view; **Full set / Compare** switches between the whole set and your most typical first rep side by side with any other rep (both cropped to the joints being measured and started together). The rep strip under the video is the navigation: click a rep to jump to it, or in Compare to put it on the right. Speed (1×, 0.5×, 0.25×), Loop and Skeleton sit with the play controls. <kbd>Space</kbd> plays or pauses; <kbd>←</kbd>/<kbd>→</kbd> move between reps (ignored while typing).
+- The **form gauge** at the top of the side panel reads green (good form), yellow (less effective for building muscle) or red (injury risk), with one line naming the main reason. It shows the whole set until you pick a rep on the strip (<kbd>Esc</kbd> or **Whole set** goes back). Rep colours on the strip match the gauge, and while a form issue is happening the offending skeleton segment is tinted.
+- Below the gauge, the side panel shows the rep in focus (the one you picked, else the breakdown rep, else the last scored rep): the 2–3 measures that moved most against your first reps, and a cue. Hover a measure to highlight the joints it tracks on the video.
+- **Details** (next to the controls) opens a drawer with the written summary, the form standards (each rule, its limits and every rep's value), the rep-by-rep table, the per-metric chart and how everything was measured.
 - The header has **Copy report** (plain text) and **Download image** (PNG summary).
 - The last exercise and the last weight used for each exercise are remembered in this browser.
 
@@ -58,9 +59,10 @@ Covers rep detection, metrics, the breakdown point, quality gates (wrong angle, 
 3. **Cleanup.** Landmarks below 0.5 visibility are dropped, gaps up to 0.4 s are interpolated, then a 5-frame median and a visibility-weighted Gaussian smooth remove spikes and jitter.
 4. **Quality gates.** The video is rejected, with the measured numbers, if the person is missing from too many frames, key joints are hidden, the person is too small, the camera angle is wrong for the exercise, the clip cuts between shots, or the camera zooms or moves.
 5. **Reps.** Detected from the main joint-angle signal using peak prominence, so pauses and small wobbles don't create reps. Pauses are excluded from tempo. Partial reps and reps cut off by the start or end of the clip are marked.
-6. **Metrics and breakdown.** Each rep is measured (range of motion, joint angles, drift, swing, tempo, left/right gaps where visible) and compared with the range covered by the baseline reps (the first 2–3 clean reps). The breakdown point is the first rep where a change persists into the next rep, or a clearly failed final rep. One-off reps are reported separately.
-7. **Scores.** Each rep's 0–100 score drops in proportion to how far each measure moved from the baseline average in the worse direction, relative to that measure's "major" threshold plus the range the baseline reps covered, so small real differences cost a few points. Rep colours (green/yellow/red) and the breakdown point use the stricter threshold levels, measured beyond the baseline range.
-8. **Reps that aren't scored** are still counted and say why on the strip and in the panel: cut off by the start or end of the video, a tracking gap longer than 0.4 s, or unclear tracking. Short tracking gaps (up to 1.5 s) are bridged when finding reps, so a joint hidden for a moment at the top of a rep doesn't erase the rep.
+6. **Form standards.** Every scored rep, first reps included, is checked against fixed per-exercise limits (for example torso swing in a curl, depth in a squat). A value has to hold for 0.2 s to count, and a rule is skipped for a rep when its joints aren't clearly visible, so a false red flag is less likely than a missed one. Rules that 2-D pose can't measure reliably from the required view are left out and listed in the Details drawer.
+7. **Metrics and breakdown.** Each rep is measured (range of motion, joint angles, drift, swing, tempo, left/right gaps where visible) and compared with the range covered by your first reps (the first 2–3 clean reps, not assumed to be good form). The breakdown point is the first rep where a change persists into the next rep, or a clearly failed final rep. One-off reps are reported separately.
+8. **Severity and scores.** A rep's colour is its most serious flag: red for a red form limit (injury risk), yellow for a yellow limit or any change against your first reps (less effective), otherwise green. The gauge maps that severity plus how far past the limit the worst measure is onto 0–100 (see `gaugeValue` in `src/lib/analysis/standards.js`). Separately, each rep's 0–100 consistency score drops in proportion to how far each measure moved from your first reps' average in the worse direction.
+9. **Reps that aren't scored** are still counted and say why on the strip and in the panel: cut off by the start or end of the video, a tracking gap longer than 0.4 s, or unclear tracking. Short tracking gaps (up to 1.5 s) are bridged when finding reps, so a joint hidden for a moment at the top of a rep doesn't erase the rep.
 
 ## Tuning
 

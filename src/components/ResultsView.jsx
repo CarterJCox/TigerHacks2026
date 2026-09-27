@@ -105,6 +105,9 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
         if (isInteractive(e.target)) return;
         e.preventDefault();
         togglePlay();
+      } else if (e.key === 'Escape' && selectedRep) {
+        // Back to the whole-set reading on the gauge.
+        setSelectedRep(null);
       } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
         if (e.target?.closest?.('[role="slider"], [role="tablist"]')) return;
         e.preventDefault();
@@ -113,7 +116,7 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [drawer, togglePlay, step]);
+  }, [drawer, togglePlay, step, selectedRep]);
 
   const weightText = input.weightLabel || (input.bodyweight ? 'Bodyweight' : `${input.weight} ${input.unit}`);
   const date = useMemo(() => new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }), []);
@@ -151,7 +154,7 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
               </div>
               <p className="stage-hint">
                 {mode === 'compare'
-                  ? `Baseline rep ${leftRep?.index} on the left. Pick a rep below to put it on the right.`
+                  ? `Rep ${leftRep?.index}, one of your first reps, on the left. Pick a rep below to put it on the right.`
                   : 'Pick a rep below to jump to it. Hover a measurement to see the joints it tracks.'}
               </p>
             </div>
@@ -220,7 +223,17 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
             />
           </section>
 
-          <SidePanel analysis={analysis} input={input} rep={focusRep} reason={focusReason} />
+          <SidePanel
+            analysis={analysis}
+            input={input}
+            rep={focusRep}
+            reason={focusReason}
+            selectedRep={selectedRep}
+            onWholeSet={() => {
+              if (loop) setLoop(false);
+              setSelectedRep(null);
+            }}
+          />
         </div>
 
         <DetailsDrawer

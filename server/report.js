@@ -6,22 +6,28 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { validateLlmReport } from '../src/lib/report/safety.js';
 
-const DEFAULT_MODEL = 'claude-opus-5';
+// Writing a short report from metrics doesn't need Opus. SPOTTER_MODEL overrides
+// this (claude-haiku-4-5-20251001 is faster and cheaper).
+export const DEFAULT_MODEL = 'claude-sonnet-5';
 const MAX_BODY_BYTES = 256 * 1024;
 
-const SYSTEM_PROMPT = `You write short form-analysis reports for Spotter, an app that compares each rep of a strength-training set against the lifter's own first reps (the baseline) using 2-D pose estimation from a video.
+const SYSTEM_PROMPT = `You write short form-analysis reports for Spotter, an app that checks each rep of a strength-training set using 2-D pose estimation from a video. It checks two things:
+1. Form standards (formStandards): every rep, the first ones included, is checked against fixed limits for the exercise. A red flag means injury risk: a pattern linked to extra joint or back strain. A yellow flag means less effective for building muscle: safe, but the target muscle does less of the work.
+2. Consistency: later reps are compared with the lifter's own first reps (firstReps) to find where form changed. A change counts as yellow.
 
 You receive a JSON object with the measurements. Write three things:
-- headline: one or two sentences, plain language, saying where form held and where it changed, naming the metrics that changed with their numbers. Example shape: "Form held for reps 1-5 and changed from rep 6: range of motion dropped 30% (120° to 84°) and your torso started swinging (3° to 14°)."
-- summary: two to four sentences that add context: the baseline reps, how many later reps stayed outside the baseline, and the biggest single change. Quote numbers exactly as given.
-- cues: one or two short coaching cues about movement only (for example "Keep your elbows pinned to your sides"). Base them on the metrics that changed. Use the provided candidate cues if they fit.
+- headline: one or two sentences, under 300 characters, plain language. If any form-standard flag is red, lead with it, for example "Injury risk on reps 4-6: your torso swung 18° to lift the weight (limit 10°)." Then say where form held and where it changed compared with the first reps, naming the metrics with their numbers, for example "Form held for reps 1-5 and changed from rep 6: range of motion dropped 30% (120° to 84°)."
+- summary: two to four sentences, under 1000 characters, in this order: red flags, then yellow flags, then changes compared with the first reps and the biggest single change. Quote numbers exactly as given.
+- cues: one or two short coaching cues about movement only (for example "Keep your elbows pinned to your sides"). Base them on red flags first, then yellow flags, then the metrics that changed. Use the provided candidate cues if they fit.
 
 Rules you must follow:
 - Describe what happened. Never recommend a weight, a load change, a rep count, a set count, or stopping the set earlier. Do not mention the weight value at all.
 - Do not diagnose or name injuries or conditions. Describe movement only.
+- For red flags say "injury risk" or "linked to extra strain". For yellow flags say "less effective for building muscle". Don't write "red flag", "yellow flag" or colour names, and don't mention flags that didn't happen. Never say the lifter will get injured or that harm is certain.
+- Call the reps in firstReps "your first reps", never "baseline". They are not assumed to be good form.
 - Only use numbers that appear in the JSON. Do not compute new percentages or averages.
 - If painReported is true, return an empty cues array and use the summary to say plainly that because they reported pain, they should have it checked by a doctor or physical therapist before training this movement again.
-- If breakdown is null, say form held steady and mention any isolated reps that drifted.
+- If breakdown is null, say the reps stayed consistent with the first reps and mention any isolated reps that drifted. Do not call the form good when there are form-standard flags.
 - Measurements marked reliability "low" should be described as approximate.
 - No emoji, no exclamation marks, no hype. Second person ("you", "your"). Use reps' numbers as written ("rep 6").`;
 
@@ -81,12 +87,18 @@ function extractText(message) {
     .trim();
 }
 
+// Haiku 4.5 rejects the effort parameter; every other current model accepts it.
+function supportsEffort(model) {
+  return !/haiku/i.test(model);
+}
+
 async function callClaude(client, model, payload) {
+  const format = { type: 'json_schema', schema: OUTPUT_SCHEMA };
   const request = {
     model,
     max_tokens: 4000,
     system: SYSTEM_PROMPT,
-    output_config: { effort: 'low', format: { type: 'json_schema', schema: OUTPUT_SCHEMA } },
+    output_config: supportsEffort(model) ? { effort: 'low', format } : { format },
     messages: [{ role: 'user', content: `Measurements:\n${JSON.stringify(payload)}` }],
   };
   let message;

@@ -1,6 +1,6 @@
 import { getExercise } from '../config/exercises/index.js';
 import { fmtNum, fmtDelta, listReps } from '../lib/report/format.js';
-import { STATUS } from './status.js';
+import { severityOf } from './status.js';
 import { useMetricHover } from './highlight.js';
 
 function unitHeader(def) {
@@ -35,8 +35,8 @@ export default function RepTable({ analysis, selectedRep, onRep }) {
         </thead>
         <tbody>
           <tr className="row-baseline">
-            <th scope="row" className="sticky">
-              Base
+            <th scope="row" className="sticky" title="Average of your first reps">
+              First
             </th>
             <td>
               <span className="muted">{listReps(analysis.baselineReps)}</span>
@@ -58,7 +58,7 @@ export default function RepTable({ analysis, selectedRep, onRep }) {
             })}
           </tr>
           {analysis.reps.map((r) => {
-            const s = STATUS[r.status] || STATUS.unknown;
+            const s = severityOf(r);
             return (
               <tr
                 key={r.index}
@@ -74,10 +74,11 @@ export default function RepTable({ analysis, selectedRep, onRep }) {
                   </button>
                 </th>
                 <td>
-                  <span className={`status-pill s-${r.status}`}>
+                  <span className={`status-pill s-${r.scorable ? r.severity : 'unknown'}`}>
                     <i aria-hidden="true" />
-                    {r.isBaseline ? 'Baseline' : s.label}
+                    {s.label}
                   </span>
+                  {r.isBaseline && <span className="tag tag-small">First rep</span>}
                   {r.partial && <span className="tag tag-small">Partial</span>}
                   {r.truncated && <span className="tag tag-small">Cut off</span>}
                   {!r.truncated && r.lowConfidence && <span className="tag tag-small">Unclear</span>}

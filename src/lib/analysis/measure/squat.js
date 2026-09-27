@@ -15,6 +15,8 @@ export default {
     const signal = newSeries(n);
     const torsoLean = newSeries(n);
     const heelRel = newSeries(n);
+    const leanOverShin = newSeries(n);
+    const thighRise = newSeries(n);
     const footLens = [];
     for (let i = 0; i < n; i++) {
       const p = sidePoints(sm, ctx.side, i);
@@ -26,10 +28,14 @@ export default {
       kneeAngle[i] = jointAngle(p.hip, p.knee, p.ankle);
       signal[i] = 180 - kneeAngle[i];
       torsoLean[i] = leanFromVertical(p.hip, p.shoulder, ctx.facing);
+      // Torso lean beyond the shin's forward tilt: about 0 when torso and shins are parallel.
+      leanOverShin[i] = torsoLean[i] - leanFromVertical(p.ankle, p.knee, ctx.facing);
+      // Thigh angle above horizontal (hip above knee is positive; 0 = parallel).
+      if (p.hip && p.knee) thighRise[i] = (Math.atan2(p.knee.y - p.hip.y, Math.abs(p.hip.x - p.knee.x)) * 180) / Math.PI;
       // Heel height above the toes as % of foot length (positive = heel up).
       if (p.heel && p.foot && footLen > 1) heelRel[i] = ((p.foot.y - p.heel.y) / footLen) * 100;
     }
-    return { signal, kneeAngle, torsoLean, heelRel };
+    return { signal, kneeAngle, torsoLean, heelRel, leanOverShin, thighRise };
   },
 
   repMetrics(rep, S) {

@@ -1,8 +1,8 @@
 // Safety rules shared by the browser and the report server.
 //   - Pain or injury reports switch the report to "see a professional" mode.
 //   - LLM-written text is rejected (and the template used instead) if it
-//     prescribes load/reps, names a diagnosis, or quotes numbers that are not
-//     in the measurements.
+//     prescribes load/reps, names a diagnosis, claims harm is certain ("you
+//     will get injured"), or quotes numbers that are not in the measurements.
 
 const PAIN_PATTERNS = [
   /\bpain(ful)?\b/i,
@@ -37,7 +37,9 @@ const PRESCRIPTION_PATTERNS = [
   /\bstop(ping)?\s+(the\s+set\s+)?at\s+rep\b/i,
   /\b(end|cut|finish)\s+(the|your)\s+set\b/i,
   /\bdeload\b/i,
-  /\b(try|use|pick|switch to|stick with|stay at|move to|aim for|target|do)\s+\d/i,
+  // A number after these is a prescription unless it's a joint angle or a
+  // tempo percentage from the form standards ("aim for 145° or more").
+  /\b(try|use|pick|switch to|stick with|stay at|move to|aim for|target|do)\s+\d+(?:\.\d+)?(?![\d.]|\s*(?:°|%|degrees?\b))/i,
   /\b\d+(\.\d+)?\s*(lb|lbs|kg|kgs|pounds?|kilos?|kilograms?)\b/i,
   /\breps? (next time|in your next set)\b/i,
 ];
@@ -52,6 +54,19 @@ const DIAGNOSIS_PATTERNS = [
   /\bdiagnos(e|is|ed)\b/i,
   /\bdamage[sd]?\b/i,
 ];
+
+// Risk wording must stay "injury risk" / "linked to extra strain": never a
+// claim that harm will happen.
+const HARM_CERTAINTY_PATTERNS = [
+  /\bwill\s+(definitely\s+|certainly\s+|eventually\s+)?(get\s+)?(injure|hurt|damage)/i,
+  /\bwill\s+(definitely\s+|certainly\s+|eventually\s+)?(cause|lead to|result in|give you)\s+(an?\s+)?(injur|damage|pain)/i,
+  /\b(you're|you’re|you are)\s+going\s+to\s+(get\s+)?(injure|hurt)/i,
+  /\bguarantee[sd]?\b/i,
+];
+
+export function findHarmClaim(text) {
+  return HARM_CERTAINTY_PATTERNS.find((re) => re.test(text)) || null;
+}
 
 export function findPrescription(text) {
   return PRESCRIPTION_PATTERNS.find((re) => re.test(text)) || null;
@@ -103,8 +118,9 @@ export function validateLlmReport(candidate, payload) {
   const headline = typeof candidate.headline === 'string' ? candidate.headline.trim() : '';
   const summary = typeof candidate.summary === 'string' ? candidate.summary.trim() : '';
   let cues = Array.isArray(candidate.cues) ? candidate.cues.filter((c) => typeof c === 'string').map((c) => c.trim()).filter(Boolean) : [];
-  if (!headline || headline.length > 260) return { ok: false, reason: 'headline missing or too long' };
-  if (!summary || summary.length > 1200) return { ok: false, reason: 'summary missing or too long' };
+  // The prompt asks for under 300 and 1000 characters; these caps leave some slack.
+  if (!headline || headline.length > 360) return { ok: false, reason: `headline missing or too long (${headline.length} characters)` };
+  if (!summary || summary.length > 1500) return { ok: false, reason: `summary missing or too long (${summary.length} characters)` };
   if (payload?.painReported) cues = [];
   if (cues.length > 2) cues = cues.slice(0, 2);
   if (cues.some((c) => c.length > 200)) return { ok: false, reason: 'cue too long' };
@@ -115,6 +131,8 @@ export function validateLlmReport(candidate, payload) {
     if (p) return { ok: false, reason: `prescriptive language (${p})` };
     const d = findDiagnosis(text);
     if (d) return { ok: false, reason: `diagnostic language (${d})` };
+    const h = findHarmClaim(text);
+    if (h) return { ok: false, reason: `certain-harm language (${h})` };
     for (const num of numbersIn(text)) {
       if (!allowed.has(num) && !allowed.has(Math.abs(num))) return { ok: false, reason: `unmeasured number ${num}` };
     }
