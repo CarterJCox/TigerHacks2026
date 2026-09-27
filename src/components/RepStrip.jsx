@@ -4,8 +4,9 @@
 
 import { useRef } from 'react';
 import { severityOf } from './status.js';
+import { alertText } from '../lib/report/format.js';
 
-export default function RepStrip({ analysis, mode, time, selectedRep, compareLeft, onRep, onSeek }) {
+export default function RepStrip({ analysis, mode, time, selectedRep, compareLeft, onRep, onSeek, onAlert }) {
   const trackRef = useRef(null);
   const dragging = useRef(false);
   const t0 = analysis.t0 || 0;
@@ -46,7 +47,7 @@ export default function RepStrip({ analysis, mode, time, selectedRep, compareLef
         ref={trackRef}
         className={`strip-track ${mode === 'compare' ? 'is-compare' : ''}`}
         onPointerDown={(e) => {
-          if (mode !== 'full' || e.target.closest('.strip-rep')) return;
+          if (mode !== 'full' || e.target.closest('.strip-rep, .strip-alert')) return;
           dragging.current = true;
           e.currentTarget.setPointerCapture(e.pointerId);
           seekFromEvent(e);
@@ -84,6 +85,17 @@ export default function RepStrip({ analysis, mode, time, selectedRep, compareLef
             </button>
           );
         })}
+        {(analysis.liveAlerts || []).map((a) => (
+          <button
+            key={`${a.t}-${a.ruleId}`}
+            type="button"
+            className="strip-alert"
+            style={{ left: pct(a.t) }}
+            onClick={() => onAlert?.(a.t)}
+            title={alertText(a)}
+            aria-label={`${alertText(a)}. Play from here.`}
+          />
+        ))}
         {mode === 'full' && <div className="strip-playhead" style={{ left: pct(time) }} aria-hidden="true" />}
       </div>
     </div>

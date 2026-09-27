@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getExercise } from '../config/exercises/index.js';
-import { fmt, fmtLong, fmtRange, listReps } from '../lib/report/format.js';
+import { alertText, fmt, fmtLong, fmtRange, listReps } from '../lib/report/format.js';
 import RepTable from './RepTable.jsx';
 import RepChart from './RepChart.jsx';
 import FormStandardsTable from './FormStandardsTable.jsx';
@@ -19,7 +19,7 @@ const TABS = [
   ['method', 'How it was measured'],
 ];
 
-function Summary({ analysis, input, report, llmPending }) {
+function Summary({ analysis, input, report, llmPending, onSeek }) {
   const cfg = getExercise(analysis.exerciseId);
   const hover = useMetricHover();
   const excluded = analysis.reps.filter((r) => !r.scorable);
@@ -31,6 +31,22 @@ function Summary({ analysis, input, report, llmPending }) {
         {report.source === 'llm' ? 'Written by Claude from these measurements.' : 'Written from these measurements.'}
         {llmPending && ' Checking for a written summary…'}
       </p>
+
+      {analysis.liveAlerts?.length > 0 && (
+        <>
+          <h3>Stop signals during the set</h3>
+          <p className="muted small">Raised live while you recorded, when a form limit linked to extra strain was crossed. Select one to watch that moment.</p>
+          <ul className="drawer-list">
+            {analysis.liveAlerts.map((a) => (
+              <li key={`${a.t}-${a.ruleId}`}>
+                <button type="button" className="link alert-link" onClick={() => onSeek?.(a.t)}>
+                  {alertText(a)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       {excluded.length > 0 && (
         <>
@@ -143,7 +159,7 @@ function Method({ analysis }) {
   );
 }
 
-export default function DetailsDrawer({ open, onClose, analysis, input, report, llmPending, selectedRep, onRep, onHistory }) {
+export default function DetailsDrawer({ open, onClose, analysis, input, report, llmPending, selectedRep, onRep, onSeek, onHistory }) {
   const [tab, setTab] = useState('summary');
   const panelRef = useRef(null);
   const cfg = getExercise(analysis.exerciseId);
@@ -183,7 +199,7 @@ export default function DetailsDrawer({ open, onClose, analysis, input, report, 
           </div>
         </header>
         <div className="drawer-body">
-          {open && tab === 'summary' && <Summary analysis={analysis} input={input} report={report} llmPending={llmPending} />}
+          {open && tab === 'summary' && <Summary analysis={analysis} input={input} report={report} llmPending={llmPending} onSeek={onSeek} />}
           {open && tab === 'form' && (
             <div className="drawer-section">
               <FormStandardsTable analysis={analysis} selectedRep={selectedRep} onRep={onRep} />

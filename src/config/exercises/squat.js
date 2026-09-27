@@ -15,6 +15,8 @@ export default {
 
   guide: {
     headline: 'Film from the side, level with your hips.',
+    line: 'Film from the side at hip height, with your whole body in frame, feet included.',
+    silhouette: 'stand',
     diagram: 'side',
     points: [
       'Stand side-on to the camera. Your whole body, including both feet, has to stay in frame at the top and at the bottom.',

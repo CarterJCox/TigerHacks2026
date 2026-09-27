@@ -15,6 +15,8 @@ export default {
 
   guide: {
     headline: 'Film from the side, level with the seat.',
+    line: 'Film from the side at seat height, with your head, hands at full reach and knees in frame.',
+    silhouette: 'seated',
     diagram: 'side',
     points: [
       'Place the camera directly to your side so your body and the cable run left to right across the frame.',

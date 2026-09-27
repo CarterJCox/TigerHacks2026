@@ -7,6 +7,25 @@ import { median } from './geometry.js';
 import { clock, describeSpans, fixForReason, jointName, missingReason, pct, reasonPhrase, spansWhere } from './messages.js';
 
 /**
+ * Horizontal shoulder span over torso length (shoulder midpoint to hip
+ * midpoint) for one frame. Side-on the shoulders overlap (small ratio);
+ * facing the camera they're far apart. NaN if a point is missing.
+ */
+export function shoulderRatio(ls, rs, lh, rh) {
+  if (!ls || !rs || !lh || !rh) return NaN;
+  const torso = Math.hypot((ls.x + rs.x) / 2 - (lh.x + rh.x) / 2, (ls.y + rs.y) / 2 - (lh.y + rh.y) / 2);
+  return torso > 1e-6 ? Math.abs(ls.x - rs.x) / torso : NaN;
+}
+
+/** Whether a shoulder ratio fits the camera view the exercise needs. Used by the quality gate and the live checks. */
+export function viewMatches(cfg, ratio) {
+  if (!Number.isFinite(ratio)) return false;
+  if (cfg.view === 'side') return ratio <= cfg.viewCheck.maxShoulderRatio;
+  if (cfg.view === 'front') return ratio >= cfg.viewCheck.minShoulderRatio;
+  return true;
+}
+
+/**
  * @returns {{ ok: boolean, issues: Issue[], stats: object }}
  *   Issue = { code, title, message, fix }
  */
@@ -162,7 +181,7 @@ export function assessQuality(track, sm, cfg, ctx, required) {
   }
 
   const ratio = stats.shoulderRatio;
-  if (cfg.view === 'side' && Number.isFinite(ratio) && ratio > cfg.viewCheck.maxShoulderRatio) {
+  if (cfg.view === 'side' && Number.isFinite(ratio) && !viewMatches(cfg, ratio)) {
     issues.push({
       code: 'wrong_angle',
       title: 'Film from the side for this exercise',
@@ -170,7 +189,7 @@ export function assessQuality(track, sm, cfg, ctx, required) {
       fix: 'Turn about 90° so one shoulder points straight at the camera, with the arm or leg you want measured on the camera side.',
     });
   }
-  if (cfg.view === 'front' && Number.isFinite(ratio) && ratio < cfg.viewCheck.minShoulderRatio) {
+  if (cfg.view === 'front' && Number.isFinite(ratio) && !viewMatches(cfg, ratio)) {
     issues.push({
       code: 'wrong_angle',
       title: 'Film from the front for this exercise',

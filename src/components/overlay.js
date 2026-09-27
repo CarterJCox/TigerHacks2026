@@ -309,3 +309,73 @@ export function fitCanvas(canvas, containerWidth, aspect, maxHeight) {
   canvas.height = Math.round(h * dpr);
   return { w, h, dpr };
 }
+
+/**
+ * The skeleton on the live camera view. `points` are the live monitor's
+ * smoothed landmarks in video pixels ({ x, y, vis, ok } arrays); `flags` are
+ * the form rules currently crossed ({ severity, joints }). Red segments are
+ * part of the stop signal; yellow stays faint on purpose, so the live view is
+ * clean while lifting.
+ */
+export function drawLivePose(ctx, points, { scale, dpr, colors, flags = [], nearSide = null }) {
+  const on = (j) => points.ok[j] === 1;
+  const at = (j) => ({ x: points.x[j] * scale, y: points.y[j] * scale });
+  const isNear = (j) => !nearSide || (NAME_OF[j] || '').startsWith(nearSide);
+  const flagFor = (a, b) => {
+    let best = null;
+    for (const f of flags) {
+      if (!f.joints.includes(a) || !f.joints.includes(b)) continue;
+      if (!best || (f.severity === 'red' && best.severity !== 'red')) best = f;
+    }
+    return best;
+  };
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (const pass of ['far', 'near']) {
+    for (const [a, b] of SKELETON) {
+      if (!on(a) || !on(b)) continue;
+      const near = isNear(a) && isNear(b);
+      if ((pass === 'near') !== near) continue;
+      const pa = at(a);
+      const pb = at(b);
+      const flag = flagFor(a, b);
+      ctx.strokeStyle = 'rgba(8,9,12,0.5)';
+      ctx.lineWidth = (near ? 6 : 4) * dpr;
+      line(ctx, pa, pb);
+      ctx.strokeStyle = near ? colors.neutral : colors.far;
+      ctx.lineWidth = (near ? 3 : 2) * dpr;
+      line(ctx, pa, pb);
+      if (flag?.severity === 'red') {
+        ctx.save();
+        ctx.strokeStyle = colors.red;
+        ctx.globalAlpha = 0.3;
+        ctx.lineWidth = 16 * dpr;
+        line(ctx, pa, pb);
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 6 * dpr;
+        line(ctx, pa, pb);
+        ctx.restore();
+      } else if (flag?.severity === 'yellow') {
+        ctx.save();
+        ctx.strokeStyle = colors.yellow;
+        ctx.globalAlpha = 0.45;
+        ctx.lineWidth = 3.5 * dpr;
+        line(ctx, pa, pb);
+        ctx.restore();
+      }
+    }
+  }
+  for (const j of BODY_POINTS) {
+    if (!on(j)) continue;
+    const p = at(j);
+    const near = isNear(j);
+    ctx.fillStyle = 'rgba(8,9,12,0.8)';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, (near ? 4.5 : 3) * dpr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = near ? colors.neutral : colors.far;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, (near ? 2.6 : 1.8) * dpr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}

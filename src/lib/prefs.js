@@ -43,3 +43,22 @@ export function initialInput(defaults) {
     ...(w ? { weight: w.weight ?? '', unit: w.unit === 'kg' ? 'kg' : 'lb', bodyweight: Boolean(w.bodyweight) } : {}),
   };
 }
+
+// Stop-signal sound on or off, remembered between sessions.
+const MUTE_KEY = 'spotter.liveMuted.v1';
+
+export function getMuted() {
+  try {
+    return localStorage.getItem(MUTE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setMuted(muted) {
+  try {
+    localStorage.setItem(MUTE_KEY, muted ? '1' : '0');
+  } catch {
+    // Storage unavailable: the choice lasts for this visit only.
+  }
+}

@@ -75,9 +75,34 @@ async function frameLooksDecoded(video) {
   return variance > 4 || mean > 8;
 }
 
+// Recordings made in the browser (MediaRecorder WebM, and fragmented MP4)
+// don't store their length up front, so the element reports Infinity until
+// it has read to the end. Seeking far past the end makes it find the real
+// duration; then it goes back to the start.
+async function resolveDuration(video, timeoutMs = 10000) {
+  if (Number.isFinite(video.duration) && video.duration > 0) return;
+  await new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      video.removeEventListener('durationchange', check);
+      video.removeEventListener('seeked', check);
+      resolve();
+    };
+    const check = () => {
+      if (Number.isFinite(video.duration) && video.duration > 0) done();
+    };
+    const timer = setTimeout(done, timeoutMs);
+    video.addEventListener('durationchange', check);
+    video.addEventListener('seeked', check);
+    video.currentTime = 1e101;
+  });
+  await seekVideo(video, 0).catch(() => {});
+}
+
 async function openNatively(url) {
   const video = createVideo(url);
   await waitForMetadata(video);
+  await resolveDuration(video);
   if (!video.videoWidth || !video.videoHeight) throw new Error('no video track decoded');
   if (!(await frameLooksDecoded(video))) throw new Error('frames decode as blank');
   return video;
@@ -104,7 +129,7 @@ function residualRotation(probe, video) {
 export async function prepareVideo(file, { onStatus = () => {}, onConvertProgress = () => {} } = {}) {
   if (!file) throw new VideoLoadError('No file selected.');
   if (file.type && !file.type.startsWith('video/') && !/\.(mov|mp4|m4v|webm|mkv|avi|3gp|hevc)$/i.test(file.name)) {
-    throw new VideoLoadError('That file is not a video. Choose an .mp4 or .mov recording of your set.');
+    throw new VideoLoadError('That file is not a video. Choose an MP4, MOV or WebM recording of your set.');
   }
   onStatus('Reading video');
   const probe = await probeContainer(file);

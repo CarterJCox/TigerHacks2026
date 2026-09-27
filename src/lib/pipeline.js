@@ -23,6 +23,9 @@ export async function runAnalysis({ prepared, exerciseId, painReported, onProgre
   await new Promise((r) => setTimeout(r, 30));
   const analysis = analyzeTrack(track, exerciseId, { painReported });
   analysis.delegate = track.delegate;
+  // Stop signals raised while recording, in video time, kept to the analyzed range.
+  const t0 = analysis.t0 || 0;
+  analysis.liveAlerts = (prepared.liveAlerts || []).filter((a) => a.t >= t0 - 0.5 && a.t <= t0 + (analysis.duration || Infinity) + 0.5);
   // Dev builds keep the raw track so thresholds can be re-tuned from the console.
   if (import.meta.env.DEV) analysis._track = track;
   return analysis;

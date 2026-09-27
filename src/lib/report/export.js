@@ -2,7 +2,7 @@
 // card drawn directly on a canvas (no screenshot library needed).
 
 import { getExercise } from '../../config/exercises/index.js';
-import { fmtDelta, fmtLong, fmtRange, listReps } from './format.js';
+import { alertText, clockTime, fmtDelta, fmtLong, fmtRange, listReps } from './format.js';
 
 const STATUS_WORD = { green: 'Held', yellow: 'Changed', red: 'Broke down', unknown: 'Not scored' };
 const SEVERITY_WORD = { green: 'Good form', yellow: 'Less effective for building muscle', red: 'Injury risk', unknown: 'Not scored' };
@@ -83,6 +83,9 @@ export function buildPlainTextReport(analysis, input, report) {
   );
   lines.push(`Consistency score: ${analysis.setScore ?? '-'} / 100`);
   if (analysis.form) lines.push(`Form gauge: ${gaugeLine(analysis)}`);
+  if (analysis.liveAlerts?.length) {
+    lines.push(`Stop signals during the set: ${analysis.liveAlerts.map((a) => `${clockTime(a.t)} ${a.short}`).join(', ')}`);
+  }
   lines.push('');
   lines.push(report.headline);
   lines.push('');
@@ -342,10 +345,19 @@ export async function renderSummaryImage(analysis, input, report) {
       ctx.fillText(l, tx, ry);
       ry += 28;
     }
+    // Stop signals raised live while recording.
+    const alerts = analysis.liveAlerts || [];
+    if (alerts.length) {
+      ctx.font = `600 16px ${body}`;
+      ctx.fillStyle = C.red;
+      const text = alerts.length <= 2 ? alerts.map(alertText).join('. ') : `${alerts.length} stop signals during the set, first ${alertText(alerts[0]).replace(/^Stop signal /, '')}`;
+      ctx.fillText(`${text}.`, tx, ry + 4);
+      ry += 28;
+    }
     ctx.font = `500 13px ${body}`;
     ctx.fillStyle = C.muted;
     ctx.fillText('Whole set: fixed form limits, plus changes from your first reps.', tx, Math.max(ry + 8, y + 150));
-    y += 190;
+    y += Math.max(190, ry + 30 - y);
   }
 
   // Stat tiles

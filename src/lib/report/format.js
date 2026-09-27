@@ -107,3 +107,14 @@ export function changePhrase(key, d, def) {
   if (def.phrase?.worse) return fillPhrase(def.phrase.worse, d, def);
   return `${def.label.toLowerCase()} changed (${fmtRange(d.base, d.value, def)})`;
 }
+
+/** "0:08" for a time in seconds. */
+export function clockTime(t) {
+  const s = Math.max(0, Math.round(t));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** "Stop signal at 0:08: torso swing" for a live alert logged while recording. */
+export function alertText(a) {
+  return `Stop signal at ${clockTime(a.t)}: ${a.short}`;
+}

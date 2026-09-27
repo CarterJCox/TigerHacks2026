@@ -152,6 +152,13 @@ describe('plain-text export', () => {
     expect(text).toMatch(/Form standards \(fixed limits, every rep\)\n- Injury risk: Torso swung/);
   });
 
+  it('lists stop signals raised while recording', async () => {
+    const { buildPlainTextReport } = await import('../src/lib/report/export.js');
+    const a = { ...breakdownSet(), liveAlerts: [{ t: 8.2, ruleId: 'torsoSwing', label: 'Torso swing', short: 'torso swing' }, { t: 19.6, ruleId: 'torsoSwing', label: 'Torso swing', short: 'torso swing' }] };
+    const text = buildPlainTextReport(a, { weight: 25, unit: 'lb', plannedReps: 10 }, buildTemplateReport(a, {}));
+    expect(text).toContain('Stop signals during the set: 0:08 torso swing, 0:20 torso swing');
+  });
+
   it('falls back to key numbers when nothing changed', async () => {
     const { buildPlainTextReport } = await import('../src/lib/report/export.js');
     const a = analyzeTrack(sideTrack(curlSet(Array(6).fill(clean))), 'curl');

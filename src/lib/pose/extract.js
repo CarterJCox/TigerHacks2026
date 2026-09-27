@@ -21,7 +21,12 @@ function getFileset() {
   return filesetPromise;
 }
 
-async function createLandmarker() {
+/**
+ * A pose landmarker in VIDEO mode (GPU, falling back to CPU). Used for the
+ * offline analysis below and for the live camera view while recording.
+ * The caller closes it.
+ */
+export async function createLandmarker() {
   const fileset = await getFileset();
   const options = (delegate) => ({
     baseOptions: { modelAssetPath: MODEL_PATH, delegate },

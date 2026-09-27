@@ -88,6 +88,15 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
     else fullRef.current?.togglePlay();
   }, [mode]);
 
+  // Jump to a stop signal from the strip or the drawer: Full set, just before it.
+  const seekTo = (t) => {
+    const go = () => fullRef.current?.seek(Math.max(analysis.t0 || 0, t - 0.5));
+    if (mode !== 'full') {
+      switchMode('full');
+      setTimeout(go, 200);
+    } else go();
+  };
+
   const switchMode = (next) => {
     if (next === mode) return;
     fullRef.current?.pause();
@@ -199,6 +208,7 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
               compareLeft={leftRep?.index}
               onRep={chooseRep}
               onSeek={(t) => fullRef.current?.seek(t)}
+              onAlert={seekTo}
             />
 
             <ControlBar
@@ -247,6 +257,10 @@ export default function ResultsView({ analysis, input, report, llmPending, prepa
           onRep={(i) => {
             setDrawer(false);
             chooseRep(i);
+          }}
+          onSeek={(t) => {
+            setDrawer(false);
+            seekTo(t);
           }}
           onHistory={onHistory}
         />

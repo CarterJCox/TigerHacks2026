@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { probeContainer } from '../src/lib/video/probe.js';
+import { readFileSync } from 'node:fs';
+import { probeContainer, describeCodec } from '../src/lib/video/probe.js';
 
 // Builds a minimal QuickTime file shaped like an iPhone portrait recording:
 // ftyp, mdat, then moov at the end with a rotated HEVC video track.
@@ -59,10 +60,18 @@ describe('container probe', () => {
     const trak = box('trak', tkhd(rot90, 1920, 1080), box('mdia', hdlr('vide'), box('minf', hdlr('alis'), box('stbl', stsd('hvc1')))));
     const file = new File([box('ftyp', fourcc('qt  ')), box('mdat', bytes(1000)), box('moov', mvhd(600, 6000), trak)], 'IMG_0001.MOV');
     const info = await probeContainer(file);
-    expect(info).toEqual({ codec: 'hvc1', width: 1920, height: 1080, rotation: 90, duration: 10 });
+    expect(info).toEqual({ container: 'mp4', codec: 'hvc1', width: 1920, height: 1080, rotation: 90, duration: 10 });
   });
 
-  it('returns null for files that are not MP4/MOV', async () => {
+  it('returns null for files that are not MP4/MOV/WebM', async () => {
     expect(await probeContainer(new File([new Uint8Array(64)], 'x.webm'))).toBeNull();
+  });
+
+  it('reads a MediaRecorder WebM recording, which stores no duration', async () => {
+    // Recorded in Chromium with MediaRecorder (VP9, 160x90, about 1.3 s).
+    const file = new File([readFileSync(new URL('./fixtures/recorded.webm', import.meta.url))], 'recording.webm', { type: 'video/webm' });
+    const info = await probeContainer(file);
+    expect(info).toEqual({ container: 'webm', codec: 'V_VP9', width: 160, height: 90, rotation: 0, duration: null });
+    expect(describeCodec(info.codec)).toBe('VP9');
   });
 });

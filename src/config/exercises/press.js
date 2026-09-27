@@ -17,6 +17,8 @@ export default {
 
   guide: {
     headline: 'Film from straight in front, at chest height.',
+    line: 'Film from straight in front at chest height, from the dumbbells at lockout down to your knees.',
+    silhouette: 'stand',
     diagram: 'front',
     points: [
       'Face the camera squarely. Both shoulders, elbows and wrists need to be visible the whole time.',

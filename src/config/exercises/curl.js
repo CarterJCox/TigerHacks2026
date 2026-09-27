@@ -29,6 +29,9 @@ export default {
 
   guide: {
     headline: 'Film from the side, level with your elbow.',
+    // One line under the drop zone on the home page, and the silhouette pose in the camera view.
+    line: 'Film from the side at elbow height, with you in frame from head to knees.',
+    silhouette: 'stand',
     diagram: 'side',
     points: [
       'Stand side-on to the camera so the arm you want measured is the one closest to it.',

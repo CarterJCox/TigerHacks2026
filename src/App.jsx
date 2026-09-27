@@ -11,6 +11,8 @@ import { buildPayload } from './lib/report/payload.js';
 import { fetchLlmReport, fetchReportStatus } from './lib/report/client.js';
 import { saveSession, sessionFromAnalysis } from './lib/history.js';
 import { EXERCISES } from './config/exercises/index.js';
+import { SAMPLE } from './config/sample.js';
+import { prepareVideo } from './lib/video/load.js';
 import { initialInput, rememberInput, weightFor } from './lib/prefs.js';
 
 const DEFAULT_INPUT = {
@@ -35,6 +37,7 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [historyExercise, setHistoryExercise] = useState(null);
+  const [sampleLoading, setSampleLoading] = useState(false);
   const abortRef = useRef(null);
 
   // Remember the selected exercise and weight for next time.
@@ -129,6 +132,28 @@ export default function App() {
     };
   }, [input]);
 
+  // "Try a sample" in the header: loads the bundled clip and analyzes it.
+  const trySample = useCallback(async () => {
+    if (sampleLoading) return;
+    setSampleLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(SAMPLE.url);
+      if (!res.ok) throw new Error(`The sample video is missing (${res.status}).`);
+      const blob = await res.blob();
+      const p = await prepareVideo(new File([blob], SAMPLE.fileName, { type: blob.type || 'video/mp4' }));
+      p.fileName = SAMPLE.fileName;
+      setSampleLoading(false);
+      await analyze({ ...SAMPLE.input }, p);
+    } catch (err) {
+      console.error(err);
+      setError(err?.message || 'The sample video could not be loaded.');
+      setScreen('setup');
+    } finally {
+      setSampleLoading(false);
+    }
+  }, [sampleLoading, analyze]);
+
   const cancelAnalysis = useCallback(() => {
     abortRef.current?.abort();
     setProgress(null);
@@ -141,7 +166,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className={`app ${screen === 'results' ? 'app-fixed' : ''}`}>
+    <div className={`app ${screen === 'results' || screen === 'setup' ? 'app-fixed' : ''}`}>
       <header className="topbar">
         <button className="brand" onClick={() => (screen === 'analyzing' ? null : startOver(true))} aria-label="Spotter, start a new set">
           <span className="brand-mark" aria-hidden="true">
@@ -151,25 +176,28 @@ export default function App() {
           </span>
           <span className="brand-name">Spotter</span>
         </button>
-        <nav className="topnav" aria-label="Main">
+        <nav className="toplinks" aria-label="Main">
+          {screen === 'history' ? (
+            <button className="toplink" onClick={() => setScreen(result?.report ? 'results' : 'setup')}>
+              {result?.report ? 'Last set' : 'New set'}
+            </button>
+          ) : (
+            <button className="toplink" onClick={trySample} disabled={screen === 'analyzing' || sampleLoading} aria-busy={sampleLoading}>
+              {sampleLoading ? 'Loading sample…' : 'Try a sample'}
+            </button>
+          )}
           <button
-            className={`navlink ${screen !== 'history' ? 'is-active' : ''}`}
-            onClick={() => (screen === 'history' ? setScreen(result?.report ? 'results' : 'setup') : null)}
-            disabled={screen === 'analyzing'}
-          >
-            {result?.report && screen === 'history' ? 'Last set' : 'Analyze'}
-          </button>
-          <button
-            className={`navlink ${screen === 'history' ? 'is-active' : ''}`}
+            className={`toplink ${screen === 'history' ? 'is-active' : ''}`}
             onClick={() => showHistory(input.exerciseId)}
             disabled={screen === 'analyzing'}
+            aria-current={screen === 'history' ? 'page' : undefined}
           >
             History
           </button>
         </nav>
       </header>
 
-      <main className={`main ${screen === 'results' ? 'main-results' : ''}`} key={screen}>
+      <main className={`main ${screen === 'results' ? 'main-results' : ''} ${screen === 'setup' ? 'main-home' : ''}`} key={screen}>
         {screen === 'setup' && (
           <SetupView
             input={input}
@@ -238,7 +266,7 @@ export default function App() {
         )}
       </main>
 
-      {screen !== 'results' && (
+      {screen !== 'results' && screen !== 'setup' && (
         <footer className="footer">
           <p>Video analysis runs on this device. Your video is never uploaded.</p>
         </footer>
