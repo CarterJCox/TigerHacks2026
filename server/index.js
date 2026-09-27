@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createReportHandler } from './report.js';
+import { createReportHandler } from './report/node.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 try {

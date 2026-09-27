@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createServer } from 'node:http';
-import { createReportHandler } from '../server/report.js';
+import { createReportHandler } from '../server/report/node.js';
 import { analyzeTrack } from '../src/lib/analysis/analyze.js';
 import { buildTemplateReport } from '../src/lib/report/template.js';
 import { buildPayload } from '../src/lib/report/payload.js';
@@ -71,7 +71,8 @@ const input = { plannedReps: 10, weight: 25, unit: 'lb', painReported: false };
 const payload = buildPayload(analysis, input, buildTemplateReport(analysis, input));
 
 async function post(base, body) {
-  const res = await fetch(`${base}/api/report`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  // Browsers always send Origin on a POST; the endpoint requires it (same origin here).
+  const res = await fetch(`${base}/api/report`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify(body) });
   return res.json();
 }
 
@@ -133,7 +134,7 @@ describe('report endpoint', () => {
     await withHandler({ ANTHROPIC_API_KEY: 'test-key', ANTHROPIC_BASE_URL: mockUrl }, async (base) => {
       const res = await fetch(`${base}/api/report`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', origin: base },
         body: JSON.stringify({ ...payload, extra: `data:video/mp4;base64,${'A'.repeat(3000)}` }),
       });
       expect(res.status).toBe(400);

@@ -1,15 +1,22 @@
-// Report endpoint. Receives computed metrics only (never video or images)
-// and asks Claude to write the plain-language parts of the report. Every
-// response is checked by the same safety rules the browser uses; anything
-// that fails falls back to the template report the browser already has.
+// The report service, shared by every entry point: the Vite dev middleware
+// and server/index.js (through node.js) and the Vercel functions in api/
+// (through web.js). It receives computed metrics only (never video or
+// images) and asks Claude to write the plain-language parts of the report.
+// Every response is checked by the same safety rules the browser uses;
+// anything that fails falls back to the template report the browser
+// already shows.
+//
+// Every non-success answer (wrong method, origin, rate limit, size, bad
+// payload) is JSON with source: 'template'. The browser treats any non-2xx
+// status, or any source other than 'llm', as "keep the template report".
 
 import Anthropic from '@anthropic-ai/sdk';
-import { validateLlmReport } from '../src/lib/report/safety.js';
+import { validateLlmReport } from '../../src/lib/report/safety.js';
+import { BodyTooLargeError, LIMITS, createRateLimiter, originAllowed, parseAllowedOrigins } from './guard.js';
 
 // Writing a short report from metrics doesn't need Opus. SPOTTER_MODEL overrides
 // this (claude-haiku-4-5-20251001 is faster and cheaper).
 export const DEFAULT_MODEL = 'claude-sonnet-5';
-const MAX_BODY_BYTES = 256 * 1024;
 
 const SYSTEM_PROMPT = `You write short form-analysis reports for Spotter, an app that checks each rep of a strength-training set using 2-D pose estimation from a video. It checks two things:
 1. Form standards (formStandards): every rep, the first ones included, is checked against fixed limits for the exercise. A red flag means injury risk: a pattern linked to extra joint or back strain. A yellow flag means less effective for building muscle: safe, but the target muscle does less of the work.
@@ -42,37 +49,6 @@ const OUTPUT_SCHEMA = {
   additionalProperties: false,
 };
 
-function sendJson(res, status, body) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
-  res.end(JSON.stringify(body));
-}
-
-function readJson(req) {
-  return new Promise((resolve, reject) => {
-    let size = 0;
-    const chunks = [];
-    req.on('data', (c) => {
-      size += c.length;
-      if (size > MAX_BODY_BYTES) {
-        reject(new Error('payload too large'));
-        req.destroy();
-        return;
-      }
-      chunks.push(c);
-    });
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
-      } catch {
-        reject(new Error('invalid JSON'));
-      }
-    });
-    req.on('error', reject);
-  });
-}
-
 // Refuse anything that looks like media, so the endpoint can only ever carry numbers and labels.
 function looksLikeMedia(payload) {
   const text = JSON.stringify(payload);
@@ -92,7 +68,13 @@ function supportsEffort(model) {
   return !/haiku/i.test(model);
 }
 
-async function callClaude(client, model, payload) {
+/**
+ * One report from Claude. `timeoutMs` bounds the whole call, including the
+ * retry without the fallback beta, so a serverless function can answer
+ * before its own time limit.
+ */
+async function callClaude(client, model, payload, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
   const format = { type: 'json_schema', schema: OUTPUT_SCHEMA };
   const request = {
     model,
@@ -106,12 +88,14 @@ async function callClaude(client, model, payload) {
     // Server-side fallback: if the model declines, the API retries on its recommended fallback model.
     message = await client.beta.messages.create(
       { ...request, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' },
-      { timeout: 60_000 },
+      { timeout: timeoutMs },
     );
   } catch (err) {
     if (err instanceof Anthropic.BadRequestError) {
       // Older API surfaces may not accept the fallback beta; retry once without it.
-      message = await client.messages.create(request, { timeout: 60_000 });
+      const left = deadline - Date.now();
+      if (left < 2000) throw new Error('no time left to retry');
+      message = await client.messages.create(request, { timeout: left });
     } else {
       throw err;
     }
@@ -121,57 +105,78 @@ async function callClaude(client, model, payload) {
   return JSON.parse(extractText(message));
 }
 
-export function createReportHandler(env = process.env) {
+const reply = (status, body, headers = {}) => ({ status, body, headers });
+const template = (status, reason, extra = {}) => reply(status, { source: 'template', reason, ...extra });
+
+/**
+ * @param env ANTHROPIC_API_KEY, SPOTTER_MODEL, ALLOWED_ORIGINS (and ANTHROPIC_BASE_URL for tests)
+ * @param options {
+ *   claudeTimeoutMs: whole Claude call (default 60 s; the Vercel function uses less),
+ *   maxRetries: SDK retries on 429/5xx/network errors (default 1),
+ *   limits: overrides for guard.js LIMITS (tests) }
+ */
+export function createReportService(env = process.env, options = {}) {
   const apiKey = (env.ANTHROPIC_API_KEY || '').trim();
   const model = (env.SPOTTER_MODEL || '').trim() || DEFAULT_MODEL;
-  const client = apiKey ? new Anthropic({ apiKey, baseURL: env.ANTHROPIC_BASE_URL || undefined, maxRetries: 1 }) : null;
+  const allowed = parseAllowedOrigins(env.ALLOWED_ORIGINS);
+  const limits = { ...LIMITS, ...options.limits };
+  const limiter = createRateLimiter(limits);
+  const claudeTimeoutMs = options.claudeTimeoutMs ?? 60_000;
+  const client = apiKey ? new Anthropic({ apiKey, baseURL: env.ANTHROPIC_BASE_URL || undefined, maxRetries: options.maxRetries ?? 1 }) : null;
 
-  return async function reportHandler(req, res, next) {
-    const url = (req.url || '').split('?')[0];
-    if (url === '/health' && req.method === 'GET') {
-      sendJson(res, 200, { ok: true, llm: Boolean(client), model: client ? model : null });
-      return;
-    }
-    if (url !== '/report') {
-      if (next) next();
-      else sendJson(res, 404, { error: 'not found' });
-      return;
-    }
-    if (req.method !== 'POST') {
-      sendJson(res, 405, { error: 'method not allowed' });
-      return;
-    }
-    let payload;
-    try {
-      payload = await readJson(req);
-    } catch (err) {
-      sendJson(res, 400, { error: err.message });
-      return;
-    }
-    if (!payload || typeof payload !== 'object' || !payload.set || !Array.isArray(payload.reps)) {
-      sendJson(res, 400, { error: 'expected a metrics payload' });
-      return;
-    }
-    if (looksLikeMedia(payload)) {
-      sendJson(res, 400, { error: 'only measurements are accepted' });
-      return;
-    }
-    if (!client) {
-      sendJson(res, 200, { source: 'template', reason: 'no API key configured' });
-      return;
-    }
-    try {
-      const candidate = await callClaude(client, model, payload);
-      const checked = validateLlmReport(candidate, payload);
-      if (!checked.ok) {
-        console.warn(`[spotter] LLM report rejected: ${checked.reason}`);
-        sendJson(res, 200, { source: 'template', reason: `rejected: ${checked.reason}` });
-        return;
+  return {
+    model,
+    limits,
+
+    /** GET /api/health: whether Claude is configured (the browser skips the report request if not). */
+    health() {
+      return reply(200, { ok: true, llm: Boolean(client), model: client ? model : null });
+    },
+
+    /**
+     * POST /api/report.
+     * @param req { method, origin, hosts: [host...], ip, contentLength, readBody(maxBytes) -> Promise<string> }
+     * @returns { status, body, headers }
+     */
+    async report(req) {
+      if (req.method !== 'POST') return { ...template(405, 'method not allowed', { error: 'Use POST.' }), headers: { Allow: 'POST' } };
+      if (!originAllowed(req.origin, req.hosts, allowed)) {
+        return template(403, 'origin not allowed', { error: 'This endpoint only accepts requests from the Spotter site.' });
       }
-      sendJson(res, 200, { source: 'llm', model, ...checked.report });
-    } catch (err) {
-      console.warn(`[spotter] LLM report failed: ${err.message}`);
-      sendJson(res, 200, { source: 'template', reason: 'LLM request failed' });
-    }
+      const length = Number(req.contentLength);
+      if (Number.isFinite(length) && length > limits.maxBodyBytes) return template(413, 'payload too large', { error: 'payload too large' });
+      const rate = limiter.take(req.ip);
+      if (!rate.ok) {
+        const limited = template(429, 'rate limited', { error: 'Too many report requests. Try again in a minute.' });
+        return { ...limited, headers: { 'Retry-After': String(rate.retryAfter) } };
+      }
+
+      let payload;
+      try {
+        const text = await req.readBody(limits.maxBodyBytes);
+        payload = JSON.parse(text || '{}');
+      } catch (err) {
+        if (err instanceof BodyTooLargeError) return template(413, 'payload too large', { error: 'payload too large' });
+        return template(400, 'invalid JSON', { error: 'invalid JSON' });
+      }
+      if (!payload || typeof payload !== 'object' || !payload.set || !Array.isArray(payload.reps)) {
+        return template(400, 'expected a metrics payload', { error: 'expected a metrics payload' });
+      }
+      if (looksLikeMedia(payload)) return template(400, 'only measurements are accepted', { error: 'only measurements are accepted' });
+      if (!client) return template(200, 'no API key configured');
+
+      try {
+        const candidate = await callClaude(client, model, payload, claudeTimeoutMs);
+        const checked = validateLlmReport(candidate, payload);
+        if (!checked.ok) {
+          console.warn(`[spotter] LLM report rejected: ${checked.reason}`);
+          return template(200, `rejected: ${checked.reason}`);
+        }
+        return reply(200, { source: 'llm', model, ...checked.report });
+      } catch (err) {
+        console.warn(`[spotter] LLM report failed: ${err.message}`);
+        return template(200, 'LLM request failed');
+      }
+    },
   };
 }

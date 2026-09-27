@@ -6,7 +6,8 @@ import { drawVideoFrame, rotatedSize, seekVideo } from '../video/frame.js';
 import { NUM_LANDMARKS } from './landmarks.js';
 
 const BASE = import.meta.env.BASE_URL || '/';
-const WASM_PATH = `${BASE}mediapipe/wasm`;
+// Versioned folder written by scripts/setup-assets.mjs (see vite.config.js).
+const WASM_PATH = `${BASE}mediapipe/${__MEDIAPIPE_VERSION__}/wasm`;
 const MODEL_PATH = `${BASE}models/pose_landmarker_full.task`;
 
 let filesetPromise = null;
