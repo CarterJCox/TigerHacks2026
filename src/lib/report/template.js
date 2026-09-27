@@ -98,6 +98,34 @@ export function buildSummary(analysis, input) {
   return sentences.join(' ');
 }
 
+/** "upper-arm swing up 14°", "range of motion down 30%". */
+export function shortChange(d, def) {
+  const label = def.label.charAt(0).toLowerCase() + def.label.slice(1);
+  const dir = d.delta >= 0 ? 'up' : 'down';
+  if (def.mode === 'relative' && Number.isFinite(d.pct)) return `${label} ${dir} ${Math.round(Math.abs(d.pct) * 100)}%`;
+  const amount = def.unit.startsWith('%') ? `${Math.round(Math.abs(d.delta))} pts` : fmtLong(Math.abs(d.delta), def);
+  return `${label} ${dir} ${amount}`;
+}
+
+/** One short line for the top of the results. */
+export function buildShortHeadline(analysis) {
+  const cfg = getExercise(analysis.exerciseId);
+  const { breakdown, reps, isolated } = analysis;
+  const scored = reps.filter((r) => r.scorable);
+  if (breakdown) {
+    const c = breakdown.causes[0];
+    const lead = breakdown.kind === 'breakdown' ? `Form broke down at rep ${breakdown.rep}` : `Form changed from rep ${breakdown.rep}`;
+    return c ? `${lead}: ${shortChange(c, cfg.metrics[c.key])}` : lead;
+  }
+  if (isolated.length === 1) {
+    const rep = reps.find((r) => r.index === isolated[0]);
+    const c = changedMetrics(rep, cfg)[0];
+    return c ? `Form held, except rep ${rep.index}: ${shortChange(c, cfg.metrics[c.key])}` : `Form held, except a brief change on rep ${rep.index}`;
+  }
+  if (isolated.length > 1) return `Form held, with brief one-rep changes on ${listReps(isolated)}`;
+  return scored.length === reps.length ? `Form held through all ${reps.length} reps` : `Form held through all ${scored.length} scored reps`;
+}
+
 export function painNotice() {
   return 'You reported pain or an injury with this set. The measurements below describe the movement only. Pain during lifting is worth having checked by a doctor or physical therapist before you train this movement again, so Spotter is not giving coaching cues for this set.';
 }

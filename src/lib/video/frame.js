@@ -16,11 +16,11 @@ export function rotatedSize(width, height, rotation) {
 
 /**
  * Draws the current video frame into a canvas of size (outW, outH), rotating
- * clockwise by `rotation` degrees (0, 90, 180, 270).
+ * clockwise by `rotation` degrees (0, 90, 180, 270). Any transform already on
+ * the context (e.g. a crop offset) is respected.
  */
 export function drawVideoFrame(ctx, video, rotation, outW, outH) {
   ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
   if (rotation === 90) {
     ctx.translate(outW, 0);
     ctx.rotate(Math.PI / 2);

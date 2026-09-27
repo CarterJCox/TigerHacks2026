@@ -72,6 +72,7 @@ export default {
     partialFrac: 0.65, // reps under 65% of a typical rep's range are marked partial
     restTolFrac: 0.12, // within 12% of the bottom counts as "at rest" (pauses are excluded from tempo)
     peakTolFrac: 0.1, // within 10% of the top counts as "at the top"
+    bridgeGapSec: 1.5, // tracking gaps up to 1.5 s are bridged when finding reps, so a rep isn't lost to a brief occlusion
     minRepSec: 0.6,
     maxRepSec: 12,
     minReps: 2, // fewer reps than this and there is nothing to compare
@@ -83,10 +84,18 @@ export default {
   },
 
   // Rep colour and score.
+  // The displayed score is continuous: each metric costs penaltyPerMajor x
+  // weight x (worse-direction change from the baseline average / (major
+  // threshold + the range the baseline reps covered)), capped at 1.5x. So a
+  // rep 1 degree worse than baseline loses a little; with a tight baseline, one
+  // at the major threshold loses about 30 x weight.
+  // Rep colour is separate and unchanged: it uses the notable/major levels
+  // (measured beyond the baseline reps' range) and these cut-offs on the
+  // same penalty computed from those levels.
   scoring: {
     penaltyPerMajor: 30, // a metric at its "major" threshold costs 30 points x weight
-    yellowBelow: 85, // score under 85 -> yellow even if no single metric crossed "notable"
-    redBelow: 60, // score under 60 -> red
+    yellowBelow: 85, // level-based score under 85 -> yellow even if no single metric crossed "notable"
+    redBelow: 60, // level-based score under 60 -> red
     sustainReps: 2, // the breakdown point needs 2 off-baseline reps in a row (a red final rep also counts); one-off reps are reported as isolated
   },
 

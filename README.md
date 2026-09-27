@@ -45,10 +45,10 @@ Covers rep detection, metrics, the breakdown point, quality gates (wrong angle, 
 
 - **Try a sample** on the first screen runs the full analysis on a bundled clip (`public/demo/seated-row.mp4`, a side-view seated row with a resistance band from Pexels). Sample runs are not saved to history. To use your own demo clip, replace the file and update `src/config/sample.js`.
 - **Trim** appears after you upload. Drag the start and end handles to cut dead time; only the kept range is analyzed. Videos up to 10 minutes can be loaded; the analyzed range must be 3 minutes or less.
-- **Results playback**: speeds 1×, 0.5× and 0.25×, a Loop rep toggle, and a Skeleton toggle, shared by the main player and the side-by-side view. <kbd>Space</kbd> plays or pauses; <kbd>←</kbd>/<kbd>→</kbd> jump to the previous or next rep (ignored while typing in a field).
-- **Baseline vs. breakdown**: your most typical baseline rep next to the breakdown rep (or the last rep if nothing broke down), started together, with the metrics that differ most.
-- **Hover a metric** (table column, chart tab, rep detail, risk factor, comparison label) to highlight the joints it measures on the video.
-- **Copy report** puts a plain-text summary on the clipboard; **Download image** saves a PNG of the headline, per-rep chart and key numbers.
+- **Results** fit on one screen. The tracked video is the main view; **Full set / Compare** switches between the whole set and your most typical baseline rep side by side with any other rep (both cropped to the joints being measured and started together). The rep strip under the video is the navigation: click a rep to jump to it, or in Compare to put it on the right. Speed (1×, 0.5×, 0.25×), Loop and Skeleton sit with the play controls. <kbd>Space</kbd> plays or pauses; <kbd>←</kbd>/<kbd>→</kbd> move between reps (ignored while typing).
+- The **side panel** shows the rep in focus (the one you picked, else the breakdown rep, else the last scored rep): its score, the 2–3 measures that moved most against baseline, and a cue or risk factor only when that rep triggered one. Hover a measure to highlight the joints it tracks on the video.
+- **Details** (next to the controls) opens a drawer with the written summary, the rep-by-rep table, the per-metric chart and how everything was measured.
+- The header has **Copy report** (plain text) and **Download image** (PNG summary).
 - The last exercise and the last weight used for each exercise are remembered in this browser.
 
 ## How it works
@@ -59,6 +59,8 @@ Covers rep detection, metrics, the breakdown point, quality gates (wrong angle, 
 4. **Quality gates.** The video is rejected, with the measured numbers, if the person is missing from too many frames, key joints are hidden, the person is too small, the camera angle is wrong for the exercise, the clip cuts between shots, or the camera zooms or moves.
 5. **Reps.** Detected from the main joint-angle signal using peak prominence, so pauses and small wobbles don't create reps. Pauses are excluded from tempo. Partial reps and reps cut off by the start or end of the clip are marked.
 6. **Metrics and breakdown.** Each rep is measured (range of motion, joint angles, drift, swing, tempo, left/right gaps where visible) and compared with the range covered by the baseline reps (the first 2–3 clean reps). The breakdown point is the first rep where a change persists into the next rep, or a clearly failed final rep. One-off reps are reported separately.
+7. **Scores.** Each rep's 0–100 score drops in proportion to how far each measure moved from the baseline average in the worse direction, relative to that measure's "major" threshold plus the range the baseline reps covered, so small real differences cost a few points. Rep colours (green/yellow/red) and the breakdown point use the stricter threshold levels, measured beyond the baseline range.
+8. **Reps that aren't scored** are still counted and say why on the strip and in the panel: cut off by the start or end of the video, a tracking gap longer than 0.4 s, or unclear tracking. Short tracking gaps (up to 1.5 s) are bridged when finding reps, so a joint hidden for a moment at the top of a rep doesn't erase the rep.
 
 ## Tuning
 

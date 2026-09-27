@@ -53,25 +53,39 @@ export function deviation(value, stat, def) {
   if (Math.abs(delta) < def.minAbsChange) adj = 0;
   const norm = def.mode === 'relative' ? adj / Math.max(Math.abs(stat.mean), def.minAbsChange) : adj;
   const level = norm >= def.major ? 'major' : norm >= def.notable ? 'notable' : 'ok';
-  return { value, base: stat.mean, delta, pct, norm, severity: norm / def.major, level, worse: bad > 0 };
+  // Continuous deviation for the displayed score: how far the rep moved from
+  // the baseline average in the worse direction, relative to the "major"
+  // threshold plus the range the baseline reps themselves covered. No noise
+  // floor and no dead zone, so small real differences cost a few points, but
+  // a baseline that already varied a lot isn't treated as a precise target.
+  const ref = def.mode === 'relative' ? Math.max(Math.abs(stat.mean), def.minAbsChange) : 1;
+  const spread = Number.isFinite(stat.max - stat.min) ? (stat.max - stat.min) / ref : 0;
+  const cont = Math.max(0, bad) / ref / (def.major + spread);
+  return { value, base: stat.mean, delta, pct, norm, severity: norm / def.major, cont, level, worse: bad > 0 };
 }
 
 function scoreRep(rep, cfg) {
+  // Status (green/yellow/red) uses the threshold levels and the
+  // beyond-baseline-range penalty, exactly as before, so rep colours and the
+  // breakdown point don't move.
+  let statusPenalty = 0;
+  // The displayed 0-100 score is continuous (see deviation().cont).
   let penalty = 0;
   let hasMajor = false;
   let hasNotable = false;
   for (const [key, def] of Object.entries(cfg.metrics)) {
     const d = rep.deviations[key];
     if (!d || d.level === 'na') continue;
-    penalty += def.weight * cfg.scoring.penaltyPerMajor * Math.min(d.severity, 1.5);
+    statusPenalty += def.weight * cfg.scoring.penaltyPerMajor * Math.min(d.severity, 1.5);
+    penalty += def.weight * cfg.scoring.penaltyPerMajor * Math.min(d.cont, 1.5);
     if (d.level === 'major' && def.maxStatus !== 'yellow') hasMajor = true;
     if (d.level === 'notable' || d.level === 'major') hasNotable = true;
   }
-  const score = Math.max(0, Math.round(100 - penalty));
+  const statusScore = Math.max(0, Math.round(100 - statusPenalty));
   let status = 'green';
-  if (hasMajor || score < cfg.scoring.redBelow) status = 'red';
-  else if (hasNotable || score < cfg.scoring.yellowBelow) status = 'yellow';
-  return { score, status };
+  if (hasMajor || statusScore < cfg.scoring.redBelow) status = 'red';
+  else if (hasNotable || statusScore < cfg.scoring.yellowBelow) status = 'yellow';
+  return { score: Math.max(0, Math.min(100, Math.round(100 - penalty))), status };
 }
 
 /** Metrics that moved past "notable", worst first. */

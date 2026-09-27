@@ -184,10 +184,10 @@ export async function renderSummaryImage(analysis, input, report) {
     text: cssVar('--text', '#eef0f3'),
     text2: cssVar('--text-2', '#b3b8c2'),
     muted: cssVar('--muted', '#7d838f'),
-    accent: cssVar('--accent', '#a797ff'),
-    green: cssVar('--good', '#0ca30c'),
+    accent: cssVar('--accent', '#3ecf7a'),
+    green: cssVar('--good', '#3ecf7a'),
     yellow: cssVar('--warn', '#fab219'),
-    red: cssVar('--bad', '#d03b3b'),
+    red: cssVar('--bad', '#e5534b'),
     unknown: cssVar('--unknown', '#5d636e'),
   };
   const W = 1200;
@@ -213,8 +213,8 @@ export async function renderSummaryImage(analysis, input, report) {
   ctx.fillStyle = C.bg;
   ctx.fillRect(0, 0, W, H);
   const glow = ctx.createRadialGradient(W - 120, -60, 20, W - 120, -60, 700);
-  glow.addColorStop(0, 'rgba(167,151,255,0.16)');
-  glow.addColorStop(1, 'rgba(167,151,255,0)');
+  glow.addColorStop(0, 'rgba(62,207,122,0.16)');
+  glow.addColorStop(1, 'rgba(62,207,122,0)');
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = 'alphabetic';
@@ -224,7 +224,7 @@ export async function renderSummaryImage(analysis, input, report) {
   rrect(ctx, pad, y - 4, 30, 30, 8);
   ctx.fillStyle = C.accent;
   ctx.fill();
-  ctx.strokeStyle = '#110d24';
+  ctx.strokeStyle = '#04210f';
   ctx.lineWidth = 3;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';

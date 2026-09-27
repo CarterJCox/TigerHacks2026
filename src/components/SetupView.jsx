@@ -12,12 +12,20 @@ function validate(input) {
   const cfg = EXERCISES[input.exerciseId];
   if (!(cfg.allowBodyweight && input.bodyweight)) {
     const w = Number(input.weight);
-    if (!input.weight || !Number.isFinite(w) || w <= 0) errors.weight = 'Enter the weight you used.';
-    else if (w > 2000) errors.weight = 'That weight looks too high.';
+    if (!input.weight || !Number.isFinite(w) || w <= 0) {
+      errors.weight = 'Enter the weight you used.';
+    }
+    else if (w > 1000) {
+      errors.weight = 'You are not lifting 1000 pounds bro.';
+    }
   }
   const r = Number(input.plannedReps);
-  if (!input.plannedReps || !Number.isInteger(r) || r < 1) errors.plannedReps = 'Enter how many reps you planned.';
-  else if (r > 100) errors.plannedReps = 'Enter 100 or fewer.';
+  if (!input.plannedReps || !Number.isInteger(r) || r < 1) {
+    errors.plannedReps = 'Enter how many reps you planned.';
+  }
+  else if (r > 50) {
+    errors.plannedReps = '50 Reps!? Lower the count.';
+  }
   return errors;
 }
 
@@ -38,11 +46,15 @@ export default function SetupView({ input, onInputChange, onAnalyze, initialPrep
   const trimTooLong = Boolean(prepared) && (trim ? trim.end - trim.start : prepared.duration) > MAX_ANALYSIS_SEC;
 
   async function handleFile(file) {
-    if (!file) return;
+    if (!file) { 
+      return;
+    }
     onDismissError?.();
     if (prepared) {
       onDiscardPrepared?.();
-      if (prepared !== initialPrepared) URL.revokeObjectURL(prepared.url);
+      if (prepared !== initialPrepared) {
+        URL.revokeObjectURL(prepared.url);
+      }
     }
     setPrepared(null);
     setUserRotation(0);

@@ -1,5 +1,5 @@
 export const STATUS = {
-  green: { label: 'Held', long: 'Matches your baseline', color: 'var(--good)' },
+  green: { label: 'Held', long: 'Within your baseline range', color: 'var(--good)' },
   yellow: { label: 'Changed', long: 'Form changed', color: 'var(--warn)' },
   red: { label: 'Broke down', long: 'Form broke down', color: 'var(--bad)' },
   unknown: { label: 'Not scored', long: 'Not scored (unclear or cut off)', color: 'var(--unknown)' },

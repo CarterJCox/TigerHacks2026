@@ -46,6 +46,32 @@ function segmentBounds(s, i) {
   return [a, b];
 }
 
+/**
+ * Linearly fills NaN runs of up to maxFrames that have data on both sides.
+ * Used only to find reps: a joint lost for a moment at the top of a rep
+ * (the dumbbell passing the face in a curl) must not erase the whole rep.
+ */
+export function bridgeGaps(s, maxFrames) {
+  const out = Float32Array.from(s);
+  let i = 0;
+  while (i < out.length) {
+    if (Number.isFinite(out[i])) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < out.length && !Number.isFinite(out[j])) j++;
+    const len = j - i;
+    if (i > 0 && j < out.length && len <= maxFrames) {
+      const a = out[i - 1];
+      const b = out[j];
+      for (let k = i; k < j; k++) out[k] = a + ((b - a) * (k - i + 1)) / (len + 1);
+    }
+    i = j;
+  }
+  return out;
+}
+
 function argMinRange(s, a, b) {
   let m = Infinity;
   let idx = a;
@@ -67,7 +93,8 @@ function argMinRange(s, a, b) {
 export function detectReps(signalRaw, times, cfg) {
   // Light extra smoothing on top of the keypoint smoothing, just enough to
   // stop single-frame wobbles from splitting a peak.
-  const s = smoothSeries(signalRaw, 1.0);
+  const fps = times.length > 1 ? 1 / Math.max(1e-6, times[1] - times[0]) : 15;
+  const s = bridgeGaps(smoothSeries(signalRaw, 1.0), Math.round((cfg.bridgeGapSec ?? 1.5) * fps));
   const finite = [];
   for (const v of s) if (Number.isFinite(v)) finite.push(v);
   if (finite.length < 8) return { reps: [], range: 0, minProminence: cfg.minAbsProminence, smoothed: s };
@@ -126,8 +153,12 @@ export function detectReps(signalRaw, times, cfg) {
         break;
       }
     }
-    const truncatedStart = start < 0;
-    const truncatedEnd = end < 0;
+    // A rep whose lowest point is the very first or last frame, and which only
+    // got partway back to rest there, was cut off by the clip (or a long gap).
+    const edgeCutL = vL === segA && s[vL] > typicalValley + (1 - cfg.partialFrac) * ampR;
+    const edgeCutR = vR === segB && s[vR] > typicalValley + (1 - cfg.partialFrac) * ampL;
+    const truncatedStart = start < 0 || edgeCutL;
+    const truncatedEnd = end < 0 || edgeCutR;
     if (truncatedStart) start = segA;
     if (truncatedEnd) end = segB;
 
@@ -163,6 +194,8 @@ export function detectReps(signalRaw, times, cfg) {
       peakValue: s[p],
       amplitude: (ampL + ampR) / 2,
       truncated: truncatedStart || truncatedEnd,
+      truncatedStart,
+      truncatedEnd,
     });
   }
 

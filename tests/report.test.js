@@ -127,3 +127,18 @@ describe('plain-text export', () => {
     expect(text).toMatch(/Key numbers\n- Elbow range of motion: \d+° baseline/);
   });
 });
+
+describe('short headline', () => {
+  it('names the breakdown rep and the top change in one line', async () => {
+    const { buildShortHeadline } = await import('../src/lib/report/template.js');
+    const line = buildShortHeadline(breakdownSet());
+    expect(line).toMatch(/^Form broke down at rep 6: [a-z-]+( [a-z-]+)* (up|down) \d+(°|%| s| pts)/);
+    expect(line.length).toBeLessThan(80);
+  });
+
+  it('says form held through all reps when nothing changed', async () => {
+    const { buildShortHeadline } = await import('../src/lib/report/template.js');
+    const a = analyzeTrack(sideTrack(curlSet(Array(6).fill(clean))), 'curl');
+    expect(buildShortHeadline(a)).toBe('Form held through all 6 reps');
+  });
+});

@@ -43,6 +43,27 @@ function otherExerciseMatch(track, sm, exerciseId) {
   return best;
 }
 
+/** Longest run of frames (in frames) within [a, b] where a required joint is missing. */
+function longestGap(sm, required, a, b) {
+  let best = 0;
+  let run = 0;
+  for (let i = a; i <= b; i++) {
+    if (required.every((j) => sm.ok[j][i])) run = 0;
+    else best = Math.max(best, ++run);
+  }
+  return best;
+}
+
+/** Why a counted rep isn't scored, in words the UI can show as-is. */
+function excludedReason(rep, required, sm, ctx) {
+  if (rep.truncatedStart) return { code: 'cut_start', text: 'Cut off by the start of the video' };
+  if (rep.truncatedEnd) return { code: 'cut_end', text: 'Cut off by the end of the video' };
+  const j = worstLandmarkInRep(sm, required, rep.startIdx, rep.endIdx);
+  const joint = j === null ? 'a measured joint' : `your ${jointName(j, { withSide: ctx.view === 'side' })}`;
+  if (rep.trackingGap) return { code: 'gap', text: `Tracking lost ${joint} for ${rep.gapSec.toFixed(1)} s during this rep` };
+  return { code: 'unclear', text: `Tracking was clear in only ${Math.round(rep.confidence * 100)}% of this rep (${joint} was hard to see)` };
+}
+
 export function analyzeTrack(track, exerciseId, { painReported = false } = {}) {
   const cfg = getExercise(exerciseId);
   const measure = MEASURES[exerciseId];
@@ -71,8 +92,13 @@ export function analyzeTrack(track, exerciseId, { painReported = false } = {}) {
   const reps = detection.reps.map((r) => {
     const rep = { ...r };
     rep.confidence = repConfidence(sm, required, rep.startIdx, rep.endIdx);
+    rep.gapSec = longestGap(sm, required, rep.startIdx, rep.endIdx) / track.fps;
     rep.lowConfidence = rep.confidence < cfg.pose.minRepConfidence;
-    rep.scorable = !rep.lowConfidence && !rep.truncated;
+    // A rep found across a tracking gap is counted, but its measurements
+    // would be missing the part of the movement that wasn't seen.
+    rep.trackingGap = rep.gapSec > cfg.pose.maxGapSec;
+    rep.scorable = !rep.lowConfidence && !rep.truncated && !rep.trackingGap;
+    rep.excluded = rep.scorable ? null : excludedReason(rep, required, sm, ctx);
     const tempo = phaseTimes(rep, cfg.reps.concentricFirst);
     rep.metrics = { ...measure.repMetrics(rep, series, ctx), liftTime: tempo.liftTime, lowerTime: tempo.lowerTime };
     rep.holdTime = tempo.holdTime;

@@ -3,6 +3,7 @@
 
 import { LM, SKELETON, BODY_POINTS } from '../lib/pose/landmarks.js';
 import { getExercise } from '../config/exercises/index.js';
+import { MEASURES } from '../lib/analysis/measure/index.js';
 
 const NAME_OF = Object.fromEntries(Object.entries(LM).map(([k, v]) => [v, k]));
 
@@ -13,14 +14,14 @@ export function cssVar(name, fallback) {
 
 export function overlayColors() {
   return {
-    green: cssVar('--good', '#0ca30c'),
+    green: cssVar('--good', '#3ecf7a'),
     yellow: cssVar('--warn', '#fab219'),
-    red: cssVar('--bad', '#d03b3b'),
+    red: cssVar('--bad', '#e5534b'),
     unknown: cssVar('--unknown', '#8a909c'),
     neutral: 'rgba(236,238,242,0.92)',
     far: 'rgba(236,238,242,0.38)',
     dim: 'rgba(236,238,242,0.22)',
-    accent: cssVar('--accent', '#a797ff'),
+    accent: cssVar('--accent', '#3ecf7a'),
   };
 }
 
@@ -81,14 +82,14 @@ function line(ctx, a, b) {
  */
 export function drawSkeleton(ctx, analysis, t, opts) {
   const { sm, ctx: body, series } = analysis;
-  const { scale, dpr, colors, statusColor, highlight, showReadout = true } = opts;
+  const { scale, dpr, colors, statusColor, highlight, showReadout = true, origin = { x: 0, y: 0 } } = opts;
   const cfg = getExercise(analysis.exerciseId);
   const fi = frameAt(analysis, t);
   const pts = {};
   const extra = highlight ? [...highlight].filter((j) => !BODY_POINTS.includes(j)) : [];
   for (const j of [...BODY_POINTS, LM.nose, ...extra]) {
     const p = pointAtFrame(sm, j, fi);
-    if (p) pts[j] = { x: p.x * scale, y: p.y * scale };
+    if (p) pts[j] = { x: (p.x - origin.x) * scale, y: (p.y - origin.y) * scale };
   }
   if (!Object.keys(pts).length) return;
   const nearSide = body.view === 'side' ? body.side : null;
@@ -181,6 +182,59 @@ export function drawSkeleton(ctx, analysis, t, opts) {
     ctx.textBaseline = 'middle';
     ctx.fillText(text, x + 8 * dpr, y + h / 2 + 0.5 * dpr);
   }
+}
+
+/**
+ * The region around the joints this exercise measures (plus the head),
+ * across the whole clip, in analysis pixels. Padded and kept to a sensible
+ * shape; used to crop the side-by-side views so the movement fills them.
+ */
+export function bodyRegion(analysis) {
+  const { sm, width, height } = analysis;
+  const xs = [];
+  const ys = [];
+  const measured = MEASURES[analysis.exerciseId]?.required(analysis.ctx) ?? BODY_POINTS;
+  const joints = [...new Set([...measured, LM.nose, LM.leftEar, LM.rightEar])];
+  for (const j of joints) {
+    for (let i = 0; i < sm.n; i += 2) {
+      if (!sm.ok[j][i]) continue;
+      xs.push(sm.x[j][i]);
+      ys.push(sm.y[j][i]);
+    }
+  }
+  if (xs.length < 20) return { x: 0, y: 0, w: width, h: height };
+  xs.sort((a, b) => a - b);
+  ys.sort((a, b) => a - b);
+  const q = (arr, p) => arr[Math.min(arr.length - 1, Math.max(0, Math.round((arr.length - 1) * p)))];
+  let x0 = q(xs, 0.01);
+  let x1 = q(xs, 0.99);
+  let y0 = q(ys, 0.01);
+  let y1 = q(ys, 0.99);
+  // Padding: room for the head above the top landmark and for the weight.
+  const padX = (x1 - x0) * 0.26 + width * 0.02;
+  const padTop = (y1 - y0) * 0.22 + height * 0.02;
+  const padBottom = (y1 - y0) * 0.08 + height * 0.02;
+  x0 -= padX;
+  x1 += padX;
+  y0 -= padTop;
+  y1 += padBottom;
+  // Keep the crop between 0.6 and 1.4 (width / height) so it never gets extreme.
+  let w = x1 - x0;
+  let h = y1 - y0;
+  if (w / h < 0.6) {
+    const nw = h * 0.6;
+    x0 -= (nw - w) / 2;
+    w = nw;
+  } else if (w / h > 1.4) {
+    const nh = w / 1.4;
+    y0 -= (nh - h) / 2;
+    h = nh;
+  }
+  w = Math.min(w, width);
+  h = Math.min(h, height);
+  x0 = Math.max(0, Math.min(width - w, x0));
+  y0 = Math.max(0, Math.min(height - h, y0));
+  return { x: x0, y: y0, w, h };
 }
 
 /** Sizes a canvas to fit its container at the given aspect ratio. Returns the CSS size. */

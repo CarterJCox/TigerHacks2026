@@ -54,6 +54,7 @@ export default {
     partialFrac: 0.65,
     restTolFrac: 0.12,
     peakTolFrac: 0.1,
+    bridgeGapSec: 1.5,
     minRepSec: 0.6,
     maxRepSec: 12,
     minReps: 2,

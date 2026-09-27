@@ -223,3 +223,69 @@ describe('failure messages', () => {
     expect(res.issues[0].fix).toBe('Pick Squat and analyze the video again.');
   });
 });
+
+describe('rep counting at the edges of the clip', () => {
+  it('counts complete first and last reps when the clip starts and ends tight on the set', () => {
+    const tl = curlSet(Array.from({ length: 6 }, () => ({ ...clean, pause: 0.2 })), 0.05, 0.02);
+    const res = analyzeTrack(sideTrack(tl), 'curl');
+    expect(res.status).toBe('ok');
+    expect(res.reps.length).toBe(6);
+    expect(res.reps.every((r) => r.scorable)).toBe(true);
+    expect(res.reps[0].tStart).toBeLessThan(0.6);
+    expect(res.reps[5].tEnd).toBeGreaterThan(tl.total - 0.8);
+  });
+
+  it('keeps a rep whose top was briefly hidden and says why it is not scored', () => {
+    const tl = curlSet(Array.from({ length: 6 }, () => clean), 0.1, 0.1);
+    const track = sideTrack(tl);
+    // Hide the wrist around the top of the first and the last rep (0.6 s each).
+    const hide = (a, b) => {
+      for (let i = 0; i < track.n; i++) if (track.times[i] >= a && track.times[i] <= b) track.raw[(i * 33 + 15) * 4 + 3] = 0.1;
+    };
+    hide(1.2, 1.8);
+    hide(tl.total - 2.35, tl.total - 1.75);
+    const res = analyzeTrack(track, 'curl');
+    expect(res.reps.length).toBe(6);
+    const excluded = res.reps.filter((r) => !r.scorable);
+    expect(excluded.length).toBeGreaterThan(0);
+    for (const r of excluded) expect(r.excluded.text).toMatch(/Tracking (lost|was clear)/);
+  });
+
+  it('explains reps cut off by the end of the video', () => {
+    // The clip stops halfway down the last rep.
+    const tl = curlSet(Array.from({ length: 5 }, () => clean), 0.5, 0);
+    const track = sideTrack(tl);
+    const keep = track.n - Math.round(0.9 * track.fps);
+    const cut = { ...track, n: keep, duration: track.times[keep - 1], times: track.times.slice(0, keep), raw: track.raw.slice(0, keep * 33 * 4), hasPose: track.hasPose.slice(0, keep) };
+    const res = analyzeTrack(cut, 'curl');
+    const last = res.reps[res.reps.length - 1];
+    expect(last.scorable).toBe(false);
+    expect(last.excluded.text).toBe('Cut off by the end of the video');
+  });
+});
+
+describe('continuous rep scores', () => {
+  it('reflects small differences while keeping every rep green', () => {
+    const arms = [6, 7, 6, 9, 12, 8];
+    const tl = curlSet(arms.map((arm) => ({ ...clean, arm })));
+    const res = analyzeTrack(sideTrack(tl), 'curl');
+    expect(res.reps.every((r) => r.status === 'green')).toBe(true);
+    const scores = res.reps.map((r) => r.score);
+    expect(new Set(scores).size).toBeGreaterThan(2);
+    expect(scores.some((s) => s < 100)).toBe(true);
+    // More elbow drift than baseline costs more points.
+    expect(res.reps[4].score).toBeLessThan(res.reps[3].score);
+    expect(res.reps[3].score).toBeLessThan(100);
+  });
+
+  it('keeps rep colours and the breakdown point on the same thresholds', () => {
+    const reps = [
+      ...Array.from({ length: 5 }, () => clean),
+      ...Array.from({ length: 3 }, () => ({ top: 80, lift: 0.7, lower: 0.6, lean: 14, arm: 22 })),
+    ];
+    const res = analyzeTrack(sideTrack(curlSet(reps)), 'curl');
+    expect(res.reps.map((r) => r.status)).toEqual(['green', 'green', 'green', 'green', 'green', 'red', 'red', 'red']);
+    expect(res.breakdown.rep).toBe(6);
+    expect(Math.max(...res.reps.slice(5).map((r) => r.score))).toBeLessThan(Math.min(...res.reps.slice(0, 5).map((r) => r.score)));
+  });
+});

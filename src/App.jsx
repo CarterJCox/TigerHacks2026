@@ -141,7 +141,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="app">
+    <div className={`app ${screen === 'results' ? 'app-fixed' : ''}`}>
       <header className="topbar">
         <button className="brand" onClick={() => (screen === 'analyzing' ? null : startOver(true))} aria-label="Spotter, start a new set">
           <span className="brand-mark" aria-hidden="true">
@@ -169,7 +169,7 @@ export default function App() {
         </nav>
       </header>
 
-      <main className="main" key={screen}>
+      <main className={`main ${screen === 'results' ? 'main-results' : ''}`} key={screen}>
         {screen === 'setup' && (
           <SetupView
             input={input}
@@ -184,7 +184,13 @@ export default function App() {
             onDismissError={() => setError(null)}
           />
         )}
-        {screen === 'analyzing' && <AnalyzingView progress={progress} input={runInput || input} onCancel={cancelAnalysis} />}
+        {screen === 'analyzing' && (
+          <AnalyzingView 
+            progress={progress} 
+            input={runInput || input} 
+            onCancel={cancelAnalysis} 
+          />
+        )}
         {screen === 'rejected' && result && (
           <RejectedView
             analysis={result.analysis}
@@ -232,9 +238,11 @@ export default function App() {
         )}
       </main>
 
-      <footer className="footer">
-        <p>Video analysis runs on this device. Your video is never uploaded.</p>
-      </footer>
+      {screen !== 'results' && (
+        <footer className="footer">
+          <p>Video analysis runs on this device. Your video is never uploaded.</p>
+        </footer>
+      )}
     </div>
   );
 }
